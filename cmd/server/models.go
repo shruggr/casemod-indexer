@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/shruggr/fungibles-indexer/lib"
-	"github.com/shruggr/fungibles-indexer/ordinals"
+	"github.com/shruggr/casemod-indexer/lib"
+	"github.com/shruggr/casemod-indexer/ordinals"
 )
 
 type TokenBalanceResponse struct {

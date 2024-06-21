@@ -1,9 +1,8 @@
 package bitcom
 
 import (
-	"github.com/libsv/go-bt/bscript"
-	"github.com/libsv/go-bt/v2"
-	"github.com/shruggr/fungibles-indexer/lib"
+	"github.com/bitcoin-sv/go-sdk/transaction"
+	"github.com/shruggr/casemod-indexer/lib"
 )
 
 var MAP = "1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5"
@@ -21,12 +20,12 @@ func ParseScript(txo *lib.Txo) {
 			break
 		}
 		switch op.OpCode {
-		case bscript.OpRETURN:
+		case script.OpRETURN:
 			if opReturn == 0 {
 				opReturn = startI
 			}
 			ParseBitcom(txo.Tx, txo, &i)
-		case bscript.OpDATA1:
+		case script.OpDATA1:
 			if op.Data[0] == '|' && opReturn > 0 {
 				ParseBitcom(txo.Tx, txo, &i)
 			}
@@ -34,7 +33,7 @@ func ParseScript(txo *lib.Txo) {
 	}
 }
 
-func ParseBitcom(tx *bt.Tx, txo *lib.Txo, idx *int) {
+func ParseBitcom(tx *transaction.Transaction, txo *lib.Txo, idx *int) {
 	startIdx := *idx
 	op, err := lib.ReadOp(txo.Script, idx)
 	if err != nil {

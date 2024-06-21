@@ -3,13 +3,13 @@ package lib
 import (
 	"encoding/json"
 
-	"github.com/libsv/go-bt/bscript"
+	"github.com/bitcoin-sv/go-sdk/script"
 )
 
 type PKHash []byte
 
 func (p *PKHash) Address() (string, error) {
-	add, err := bscript.NewAddressFromPublicKeyHash(*p, true)
+	add, err := script.NewAddressFromPublicKeyHash(*p, true)
 	if err != nil {
 		return "", err
 	}
@@ -26,8 +26,8 @@ func (p PKHash) MarshalJSON() ([]byte, error) {
 }
 
 func NewPKHashFromAddress(a string) (p *PKHash, err error) {
-	add, err := bscript.NewAddressFromString(a)
-	// script, err := bscript.NewP2PKHFromAddress(a)
+	add, err := script.NewAddressFromString(a)
+	// script, err := script.NewP2PKHFromAddress(a)
 	if err != nil {
 		return
 	}

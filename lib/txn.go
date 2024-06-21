@@ -4,46 +4,15 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
-	"strconv"
 	"time"
 
-	"github.com/libsv/go-bt/bscript"
-	"github.com/libsv/go-bt/v2"
+	"github.com/bitcoin-sv/go-sdk/script"
+	"github.com/libsv/go-bt"
+	// "github.com/libsv/go-bt/v2"
 	"github.com/redis/go-redis/v9"
 )
 
 const THREADS = 64
-
-type IndexContext struct {
-	Tx      *bt.Tx     `json:"-"`
-	Txid    ByteString `json:"txid"`
-	BlockId *string    `json:"blockId"`
-	Height  uint32     `json:"height"`
-	Idx     uint64     `json:"idx"`
-	Txos    []*Txo     `json:"txos"`
-	Spends  []*Txo     `json:"spends"`
-}
-
-func (ctx *IndexContext) SaveTxos(cmdable redis.Cmdable) {
-	for _, txo := range ctx.Txos {
-		txo.Save(ctx, cmdable)
-	}
-}
-
-func (ctx *IndexContext) SaveSpends(cmdable redis.Cmdable) {
-	scoreHeight := ctx.Height
-	if scoreHeight == 0 {
-		scoreHeight = uint32(time.Now().Unix())
-	}
-	spentScore, err := strconv.ParseFloat(fmt.Sprintf("1.%010d", scoreHeight), 64)
-	if err != nil {
-		panic(err)
-	}
-	for _, spend := range ctx.Spends {
-		spend.SetSpend(ctx, cmdable, spentScore)
-	}
-}
 
 func IndexTxn(rawtx []byte, blockId string, height uint32, idx uint64) (ctx *IndexContext, err error) {
 	ctx, err = ParseTxn(rawtx, blockId, height, idx)
@@ -140,7 +109,7 @@ func ParseTxos(ctx *IndexContext) {
 			Script:   *txout.LockingScript,
 		}
 
-		if len(txo.Script) >= 25 && bscript.NewFromBytes(txo.Script[:25]).IsP2PKH() {
+		if len(txo.Script) >= 25 && script.NewFromBytes(txo.Script[:25]).IsP2PKH() {
 			pkhash := PKHash(txo.Script[3:23])
 			txo.PKHash = &pkhash
 		}

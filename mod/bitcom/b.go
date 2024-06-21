@@ -3,8 +3,7 @@ package bitcom
 import (
 	"crypto/sha256"
 
-	"github.com/libsv/go-bt/v2/bscript"
-	"github.com/shruggr/fungibles-indexer/lib"
+	"github.com/shruggr/casemod-indexer/lib"
 )
 
 type BFile struct {
@@ -21,7 +20,7 @@ func ParseB(script []byte, idx *int) (b *BFile) {
 	for i := 0; i < 4; i++ {
 		prevIdx := *idx
 		op, err := lib.ReadOp(script, idx)
-		if err != nil || op.OpCode == bscript.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
+		if err != nil || op.OpCode == script.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
 			*idx = prevIdx
 			break
 		}

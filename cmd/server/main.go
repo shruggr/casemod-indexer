@@ -18,9 +18,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-	_ "github.com/shruggr/fungibles-indexer/cmd/server/docs"
-	"github.com/shruggr/fungibles-indexer/lib"
-	"github.com/shruggr/fungibles-indexer/ordinals"
+	_ "github.com/shruggr/casemod-indexer/cmd/server/docs"
+	"github.com/shruggr/casemod-indexer/lib"
+	"github.com/shruggr/casemod-indexer/ordinals"
 )
 
 var POSTGRES string

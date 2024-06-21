@@ -9,8 +9,9 @@ import (
 	"strconv"
 
 	"github.com/GorillaPool/go-junglebus"
+	"github.com/bitcoin-sv/go-sdk/transaction"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/libsv/go-bt/v2"
+
 	"github.com/ordishs/go-bitcoin"
 	"github.com/redis/go-redis/v9"
 	"github.com/tikv/client-go/v2/rawkv"
@@ -30,7 +31,6 @@ func Initialize(postgres *pgxpool.Pool, rdb *redis.Client, cache *redis.Client) 
 	Db = postgres
 	Rdb = rdb
 	Cache = cache
-	// TiKV, err = rawkv.NewClientWithOpts(context.Background(), []string{"127.0.0.1:2379"}, rawkv.WithAPIVersion(kvrpcpb.APIVersion_V2))
 
 	log.Println("JUNGLEBUS", os.Getenv("JUNGLEBUS"))
 	if os.Getenv("JUNGLEBUS") != "" {
@@ -53,7 +53,7 @@ func Initialize(postgres *pgxpool.Pool, rdb *redis.Client, cache *redis.Client) 
 	return
 }
 
-func LoadTx(txid string) (tx *bt.Tx, err error) {
+func LoadTx(txid string) (tx *transaction.Transaction, err error) {
 	rawtx, err := LoadRawtx(txid)
 	if err != nil {
 		return
@@ -62,7 +62,7 @@ func LoadTx(txid string) (tx *bt.Tx, err error) {
 		err = fmt.Errorf("missing-txn %s", txid)
 		return
 	}
-	return bt.NewTxFromBytes(rawtx)
+	return transaction.NewTxFromBytes(rawtx)
 }
 
 func LoadRawtx(txid string) (rawtx []byte, err error) {

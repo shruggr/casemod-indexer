@@ -13,10 +13,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/fxamacker/cbor"
-	"github.com/libsv/go-bt/v2/bscript"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
-	"github.com/shruggr/fungibles-indexer/mod/bitcom"
+	"github.com/shruggr/casemod-indexer/lib"
+	"github.com/shruggr/casemod-indexer/mod/bitcom"
 )
 
 type Inscription struct {
@@ -56,7 +55,7 @@ func ParseScript(txo *lib.Txo) {
 		startI := i
 		if op, err := lib.ReadOp(script, &i); err != nil {
 			break
-		} else if op.OpCode == bscript.OpDATA3 && i > 2 && bytes.Equal(op.Data, []byte("ord")) && script[startI-2] == 0 && script[startI-1] == bscript.OpIF {
+		} else if op.OpCode == script.OpDATA3 && i > 2 && bytes.Equal(op.Data, []byte("ord")) && script[startI-2] == 0 && script[startI-1] == script.OpIF {
 			ParseInscription(txo, script, &i)
 		}
 	}
@@ -71,17 +70,17 @@ func ParseInscription(txo *lib.Txo, script []byte, fromPos *int) {
 ordLoop:
 	for {
 		op, err := lib.ReadOp(script, &pos)
-		if err != nil || op.OpCode > bscript.Op16 {
+		if err != nil || op.OpCode > script.Op16 {
 			return
 		}
 
 		op2, err := lib.ReadOp(script, &pos)
-		if err != nil || op2.OpCode > bscript.Op16 {
+		if err != nil || op2.OpCode > script.Op16 {
 			return
 		}
 
 		var field int
-		if op.OpCode > bscript.OpPUSHDATA4 && op.OpCode <= bscript.Op16 {
+		if op.OpCode > script.OpPUSHDATA4 && op.OpCode <= script.Op16 {
 			field = int(op.OpCode) - 80
 		} else if op.Len == 1 {
 			field = int(op.Data[0])
@@ -93,7 +92,7 @@ ordLoop:
 				ins.Fields[string(op.Data)] = op2.Data
 			}
 			if string(op.Data) == bitcom.MAP {
-				script := bscript.NewFromBytes(op2.Data)
+				script := script.NewFromBytes(op2.Data)
 				pos := 0
 				md := bitcom.ParseMAP(*script, &pos)
 				if md != nil {
@@ -135,7 +134,7 @@ ordLoop:
 		}
 	}
 	op, err := lib.ReadOp(script, &pos)
-	if err != nil || op.OpCode != bscript.OpENDIF {
+	if err != nil || op.OpCode != script.OpENDIF {
 		return
 	}
 	*fromPos = pos
@@ -179,12 +178,12 @@ ordLoop:
 	}
 
 	if txo.PKHash != nil && len(*txo.PKHash) == 0 {
-		if len(script) >= pos+25 && bscript.NewFromBytes(script[pos:pos+25]).IsP2PKH() {
+		if len(script) >= pos+25 && script.NewFromBytes(script[pos:pos+25]).IsP2PKH() {
 			pkhash := lib.PKHash(script[pos+3 : pos+23])
 			txo.PKHash = &pkhash
 		} else if len(script) >= pos+26 &&
-			script[pos] == bscript.OpCODESEPARATOR &&
-			bscript.NewFromBytes(script[pos+1:pos+26]).IsP2PKH() {
+			script[pos] == script.OpCODESEPARATOR &&
+			script.NewFromBytes(script[pos+1:pos+26]).IsP2PKH() {
 			pkhash := lib.PKHash(script[pos+4 : pos+24])
 			txo.PKHash = &pkhash
 		}

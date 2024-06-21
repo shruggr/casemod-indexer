@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/libsv/go-bt/v2/bscript"
+	"github.com/bitcoin-sv/go-sdk/script"
 )
 
 type OpPart struct {
@@ -19,9 +19,9 @@ func ReadOp(b []byte, idx *int) (op *OpPart, err error) {
 		return
 	}
 	switch b[*idx] {
-	case bscript.OpPUSHDATA1:
+	case script.OpPUSHDATA1:
 		if len(b) < *idx+2 {
-			err = bscript.ErrDataTooSmall
+			err = script.ErrDataTooSmall
 			return
 		}
 
@@ -29,16 +29,16 @@ func ReadOp(b []byte, idx *int) (op *OpPart, err error) {
 		*idx += 2
 
 		if len(b) < *idx+l {
-			err = bscript.ErrDataTooSmall
+			err = script.ErrDataTooSmall
 			return
 		}
 
-		op = &OpPart{OpCode: bscript.OpPUSHDATA1, Data: b[*idx : *idx+l]}
+		op = &OpPart{OpCode: script.OpPUSHDATA1, Data: b[*idx : *idx+l]}
 		*idx += l
 
-	case bscript.OpPUSHDATA2:
+	case script.OpPUSHDATA2:
 		if len(b) < *idx+3 {
-			err = bscript.ErrDataTooSmall
+			err = script.ErrDataTooSmall
 			return
 		}
 
@@ -46,16 +46,16 @@ func ReadOp(b []byte, idx *int) (op *OpPart, err error) {
 		*idx += 3
 
 		if len(b) < *idx+l {
-			err = bscript.ErrDataTooSmall
+			err = script.ErrDataTooSmall
 			return
 		}
 
-		op = &OpPart{OpCode: bscript.OpPUSHDATA2, Data: b[*idx : *idx+l]}
+		op = &OpPart{OpCode: script.OpPUSHDATA2, Data: b[*idx : *idx+l]}
 		*idx += l
 
-	case bscript.OpPUSHDATA4:
+	case script.OpPUSHDATA4:
 		if len(b) < *idx+5 {
-			err = bscript.ErrDataTooSmall
+			err = script.ErrDataTooSmall
 			return
 		}
 
@@ -63,18 +63,18 @@ func ReadOp(b []byte, idx *int) (op *OpPart, err error) {
 		*idx += 5
 
 		if len(b) < *idx+l {
-			err = bscript.ErrDataTooSmall
+			err = script.ErrDataTooSmall
 			return
 		}
 
-		op = &OpPart{OpCode: bscript.OpPUSHDATA4, Data: b[*idx : *idx+l]}
+		op = &OpPart{OpCode: script.OpPUSHDATA4, Data: b[*idx : *idx+l]}
 		*idx += l
 
 	default:
-		if b[*idx] >= 0x01 && b[*idx] < bscript.OpPUSHDATA1 {
+		if b[*idx] >= 0x01 && b[*idx] < script.OpPUSHDATA1 {
 			l := b[*idx]
 			if len(b) < *idx+int(1+l) {
-				err = bscript.ErrDataTooSmall
+				err = script.ErrDataTooSmall
 				return
 			}
 			op = &OpPart{OpCode: b[*idx], Data: b[*idx+1 : *idx+int(l+1)]}

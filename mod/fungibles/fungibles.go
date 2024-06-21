@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
-	"github.com/shruggr/fungibles-indexer/mod/ord"
-	"github.com/shruggr/fungibles-indexer/mod/ordlock"
+	"github.com/shruggr/casemod-indexer/lib"
+	"github.com/shruggr/casemod-indexer/mod/ord"
+	"github.com/shruggr/casemod-indexer/mod/ordlock"
 )
 
 type Token struct {

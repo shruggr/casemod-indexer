@@ -4,8 +4,8 @@ import (
 	"log"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
-	"github.com/shruggr/fungibles-indexer/mod/bitcom"
+	"github.com/shruggr/casemod-indexer/lib"
+	"github.com/shruggr/casemod-indexer/mod/bitcom"
 )
 
 const MAX_DEPTH = 1024

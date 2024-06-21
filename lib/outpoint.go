@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/libsv/go-bt/v2"
+	"github.com/bitcoin-sv/go-sdk/utils"
 )
 
 type Outpoint []byte
@@ -41,9 +41,9 @@ func NewOutpointFromTxOutpoint(p []byte) (o *Outpoint, err error) {
 		return nil, errors.New("invalid pointer")
 	}
 	b := make([]byte, 36)
-	copy(b[:32], bt.ReverseBytes(p[:32]))
+	copy(b[:32], utils.ReverseBytes(p[:32]))
 	if len(p) > 32 {
-		copy(b[32:], bt.ReverseBytes(p[32:]))
+		copy(b[32:], utils.ReverseBytes(p[32:]))
 	}
 	// b = append(b, bt.ReverseBytes(p[32:])...)
 	origin := Outpoint(b)

@@ -12,13 +12,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bitcoin-sv/go-sdk/script"
 	"github.com/jackc/pgx/v5"
 	"github.com/libsv/go-bk/bip32"
 	"github.com/libsv/go-bk/crypto"
-	"github.com/libsv/go-bt/bscript"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
-	"github.com/shruggr/fungibles-indexer/mod/ord"
+	"github.com/shruggr/casemod-indexer/lib"
+	"github.com/shruggr/casemod-indexer/mod/ord"
 )
 
 type Bsv20Status int
@@ -309,7 +309,7 @@ func InitializeFunding(concurrency int) map[string]*TokenFunds {
 					wg.Done()
 					<-limiter
 				}()
-				add, err := bscript.NewAddressFromPublicKeyHash(funds.PKHash, true)
+				add, err := script.NewAddressFromPublicKeyHash(funds.PKHash, true)
 				if err != nil {
 					log.Panicln(err)
 				}
@@ -561,7 +561,7 @@ func InitializeFunding(concurrency int) map[string]*TokenFunds {
 // 			log.Printf("Validating %s %x %d\n", tick, txid, bsv20.Vout)
 // 			if bsv20.Listing {
 // 				bsv20.Outpoint = lib.NewOutpoint(txid, bsv20.Vout)
-// 				add, err := bscript.NewAddressFromPublicKeyHash(bsv20.PKHash, true)
+// 				add, err := script.NewAddressFromPublicKeyHash(bsv20.PKHash, true)
 // 				if err == nil {
 // 					bsv20.Owner = add.AddressString
 // 				}

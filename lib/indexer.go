@@ -30,7 +30,7 @@ type Msg struct {
 func Exec(
 	indexBlocks bool,
 	indexMempool bool,
-	txHandler func(txn *lib.IndexContext) error,
+	txHandler func(txn *IndexContext) error,
 	blockHander func(height uint32) error,
 	indexer string,
 	topic string,
@@ -45,15 +45,6 @@ func Exec(
 
 	threadLimiter = make(chan struct{}, concurrency)
 
-	JUNGLEBUS := os.Getenv("JUNGLEBUS")
-	if JUNGLEBUS == "" {
-		JUNGLEBUS = "https://junglebus.gorillapool.io"
-	}
-	fmt.Println("JUNGLEBUS", JUNGLEBUS, topic)
-
-	junglebusClient, err = junglebus.New(
-		junglebus.WithHTTP(JUNGLEBUS),
-	)
 	if err != nil {
 		log.Panicln(err.Error())
 	}

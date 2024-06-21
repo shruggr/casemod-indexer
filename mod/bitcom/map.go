@@ -7,9 +7,8 @@ import (
 	"errors"
 	"unicode/utf8"
 
-	"github.com/libsv/go-bt/v2/bscript"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
+	"github.com/shruggr/casemod-indexer/lib"
 )
 
 type Map map[string]interface{}
@@ -59,14 +58,14 @@ func ParseMAP(script []byte, idx *int) *Map {
 	for {
 		prevIdx := *idx
 		op, err = lib.ReadOp(script, idx)
-		if err != nil || op.OpCode == bscript.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
+		if err != nil || op.OpCode == script.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
 			*idx = prevIdx
 			break
 		}
 		opKey := op.Data
 		prevIdx = *idx
 		op, err = lib.ReadOp(script, idx)
-		if err != nil || op.OpCode == bscript.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
+		if err != nil || op.OpCode == script.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
 			*idx = prevIdx
 			break
 		}

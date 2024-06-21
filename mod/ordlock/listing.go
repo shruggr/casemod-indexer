@@ -2,7 +2,7 @@ package ordlock
 
 import (
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
+	"github.com/shruggr/casemod-indexer/lib"
 )
 
 type Listing struct {

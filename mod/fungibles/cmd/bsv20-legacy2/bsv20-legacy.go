@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
+	"github.com/shruggr/casemod-indexer/lib"
 )
 
 // var settled = make(chan uint32, 1000)
@@ -33,7 +33,7 @@ func init() {
 	wd, _ := os.Getwd()
 	log.Println("CWD:", wd)
 	godotenv.Load(fmt.Sprintf(`%s/../../.env`, wd))
-	flag.StringVar(&TOPIC, "t", "", "Junglebus SubscriptionID")
+	flag.StringVar(&TOPIC, "t", "", "Junglebus SuscriptionID")
 	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
 	flag.Parse()
 
@@ -65,7 +65,7 @@ func init() {
 func main() {
 	var listenWg sync.WaitGroup
 	listenWg.Add(1)
-	var sub *junglebus.Subscription
+	var sub *junglebus.Suscription
 	eventHandler := junglebus.EventHandler{
 		OnStatus: func(status *models.ControlResponse) {
 			if VERBOSE > 0 {

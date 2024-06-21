@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
-	"github.com/shruggr/fungibles-indexer/ordinals"
-	"github.com/shruggr/fungibles-indexer/ordlock"
+	"github.com/shruggr/casemod-indexer/lib"
+	"github.com/shruggr/casemod-indexer/ordinals"
+	"github.com/shruggr/casemod-indexer/ordlock"
 )
 
 var POSTGRES string

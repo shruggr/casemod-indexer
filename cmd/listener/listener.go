@@ -17,7 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
+	"github.com/shruggr/casemod-indexer/lib"
 )
 
 // var settled = make(chan uint32, 1000)
@@ -44,7 +44,7 @@ func init() {
 	godotenv.Load(fmt.Sprintf(`%s/../../.env`, wd))
 
 	flag.StringVar(&INDEXER, "id", "inscriptions", "Indexer name")
-	flag.StringVar(&TOPIC, "t", "", "Junglebus SubscriptionID")
+	flag.StringVar(&TOPIC, "t", "", "Junglebus SuscriptionID")
 	flag.UintVar(&progress, "s", uint(lib.TRIGGER), "Start from block")
 	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
 	flag.Parse()

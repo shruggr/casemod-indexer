@@ -9,11 +9,11 @@ import (
 	"errors"
 	"strconv"
 
+	"github.com/bitcoin-sv/go-sdk/script"
+	"github.com/bitcoin-sv/go-sdk/transaction"
 	"github.com/bitcoinschema/go-bitcoin"
-	"github.com/libsv/go-bt/v2"
-	"github.com/libsv/go-bt/v2/bscript"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/fungibles-indexer/lib"
+	"github.com/shruggr/casemod-indexer/lib"
 )
 
 type Sigmas []*Sigma
@@ -61,12 +61,12 @@ func (s *Sigma) Tag() string {
 	return "sigma"
 }
 
-func ParseSigma(tx *bt.Tx, script bscript.Script, startIdx int, idx *int) (sigma *Sigma) {
+func ParseSigma(tx *transaction.Transaction, script script.Script, startIdx int, idx *int) (sigma *Sigma) {
 	sigma = &Sigma{}
 	for i := 0; i < 4; i++ {
 		prevIdx := *idx
 		op, err := lib.ReadOp(script, idx)
-		if err != nil || op.OpCode == bscript.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
+		if err != nil || op.OpCode == script.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
 			*idx = prevIdx
 			break
 		}
@@ -90,7 +90,7 @@ func ParseSigma(tx *bt.Tx, script bscript.Script, startIdx int, idx *int) (sigma
 	outpoint = binary.LittleEndian.AppendUint32(outpoint, tx.Inputs[sigma.Vin].PreviousTxOutIndex)
 	inputHash := sha256.Sum256(outpoint)
 	var scriptBuf []byte
-	if script[startIdx-1] == bscript.OpRETURN {
+	if script[startIdx-1] == script.OpRETURN {
 		scriptBuf = script[:startIdx-1]
 	} else if script[startIdx-1] == '|' {
 		scriptBuf = script[:startIdx-2]
