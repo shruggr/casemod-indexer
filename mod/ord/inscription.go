@@ -3,7 +3,6 @@ package ord
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/json"
 	"regexp"
 	"slices"
@@ -11,54 +10,51 @@ import (
 	"unicode/utf8"
 
 	"github.com/bitcoin-sv/go-sdk/script"
-	"github.com/fxamacker/cbor"
 	"github.com/shruggr/casemod-indexer/lib"
-	"github.com/shruggr/casemod-indexer/mod/bitcom"
 	"github.com/shruggr/casemod-indexer/types"
+	"google.golang.org/protobuf/proto"
 )
 
 var AsciiRegexp = regexp.MustCompile(`^[[:ascii:]]*$`)
 
-type Inscription struct {
-	Json      json.RawMessage        `json:"json,omitempty"`
-	Text      string                 `json:"text,omitempty"`
-	File      *lib.File              `json:"file,omitempty"`
-	Pointer   *uint64                `json:"pointer,omitempty"`
-	Parent    *types.Outpoint        `json:"parent,omitempty"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
-	Metaproto []byte                 `json:"metaproto,omitempty"`
-	Fields    map[string]interface{} `json:"-"`
-}
+type InscriptionIndexer struct{}
 
-func (i *Inscription) Tag() string {
+func (i *InscriptionIndexer) Tag() string {
 	return "ord"
 }
 
-func (i *Inscription) Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
-	txo := idxCtx.Txos[vout]
-	// s := *idxCtx.Tx.Outputs[vout].LockingScript
+func (i *InscriptionIndexer) Save(idxCtx *types.IndexContext) {}
 
-	idxData := &types.IndexData{
-		Events: []*types.Event{},
-		Deps:   []*types.Outpoint{},
-	}
+func (i *InscriptionIndexer) Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
+	txo := idxCtx.Txos[vout]
 	for i := 0; i < len(txo.Script); {
 		startI := i
 		if op, err := lib.ReadOp(txo.Script, &i); err != nil {
 			break
-		} else if op.OpCode == script.OpDATA3 && i > 2 && bytes.Equal(op.Data, []byte("ord")) && s[startI-2] == 0 && s[startI-1] == script.OpIF {
-			insc := ParseInscription(idxCtx, vout, txo.Script, &i)
-			idxData.Data = 
+		} else if op.OpCode == script.OpDATA3 && i > 2 &&
+			bytes.Equal(op.Data, []byte("ord")) &&
+			txo.Script[startI-2] == 0 &&
+			txo.Script[startI-1] == script.OpIF {
+			return ParseInscription(idxCtx, vout, txo.Script, &i)
 		}
 	}
 	return nil
 }
 
-func ParseInscription(txCtx *types.IndexContext, vout uint32, s []byte, fromPos *int) *Inscription {
+// func (i *InscriptionIndexer) UnmarshalData(target interface{}) error {
+
+// }
+
+func ParseInscription(txCtx *types.IndexContext, vout uint32, s []byte, fromPos *int) *types.IndexData {
 	txo := txCtx.Txos[vout]
 	pos := *fromPos
+	idxData := &types.IndexData{
+		Events: []*types.Event{},
+		Deps:   []*types.Outpoint{},
+	}
+
 	ins := &Inscription{
-		File: &lib.File{},
+		File: &File{},
 	}
 
 ordLoop:
@@ -79,21 +75,10 @@ ordLoop:
 		} else if op.Len == 1 {
 			field = int(op.Data[0])
 		} else if op.Len > 1 {
-			if ins.Fields == nil {
-				ins.Fields = map[string]interface{}{}
-			}
-			if op.Len <= 64 && utf8.Valid(op.Data) && !bytes.Contains(op.Data, []byte{0}) && !bytes.Contains(op.Data, []byte("\\u0000")) {
-				ins.Fields[string(op.Data)] = op2.Data
-			}
-			if string(op.Data) == bitcom.MAP {
-				script := script.NewFromBytes(op2.Data)
-				pos := 0
-				md := bitcom.ParseMAP(*script, &pos)
-				if md != nil {
-
-					txo.AddData("map", md)
-				}
-			}
+			ins.Fields = append(ins.Fields, &Field{
+				Id:    op.Data,
+				Value: op2.Data,
+			})
 			continue
 		}
 
@@ -104,66 +89,70 @@ ordLoop:
 		case 1:
 			if len(op2.Data) < 256 && utf8.Valid(op2.Data) {
 				ins.File.Type = string(op2.Data)
-				ins.LogEvent("type", ins.File.Type)
+				idxData.Events = append(idxData.Events, &types.Event{
+					Id:    "type",
+					Value: ins.File.Type,
+				})
 			}
-		case 2:
-			pointer := binary.LittleEndian.Uint64(op2.Data)
-			ins.Pointer = &pointer
 		case 3:
-			if parent, err := lib.NewOutpointFromTxOutpoint(op2.Data); err == nil {
-				if slices.ContainsFunc(txCtx.Spends, func(spend *lib.Txo) bool {
-					origin := spend.Data["origin"]
-					return origin != nil && bytes.Equal(*spend.Outpoint, *parent)
+			if parent, err := types.NewOutpointFromBytes(op2.Data); err == nil {
+				if slices.ContainsFunc(txCtx.Spends, func(spend *types.Txo) bool {
+					if o, ok := spend.Data["origin"]; ok {
+						origin := &Origin{}
+						if err := proto.Unmarshal(o.Data, origin); err != nil {
+							panic(err)
+						}
+						return bytes.Equal(spend.Outpoint.Bytes(), parent.Bytes())
+					}
+					return false
 				}) {
-					ins.Parent = parent
-					ins.LogEvent("parent", parent.String())
+					ins.Parent = parent.Bytes()
+					idxData.Events = append(idxData.Events, &types.Event{
+						Id:    "parent",
+						Value: parent.JsonString(),
+					})
 				}
 			}
-		case 5:
-			md := &bitcom.Map{}
-			if err := cbor.Unmarshal(op2.Data, md.Data); err == nil {
-				ins.Metadata = md.Data
-			}
-		case 7:
-			ins.Metaproto = op2.Data
-		case 9:
-			ins.File.Encoding = string(op2.Data)
 		default:
-			if ins.Fields == nil {
-				ins.Fields = map[string]interface{}{}
-			}
-
+			ins.Fields = append(ins.Fields, &Field{
+				Id:    []byte{byte(field)},
+				Value: op2.Data,
+			})
 		}
 	}
 	op, err := lib.ReadOp(s, &pos)
 	if err != nil || op.OpCode != script.OpENDIF {
 		return nil
 	}
+	if len(txo.Owner) == 0 {
+		if len(s) >= pos+25 && script.NewFromBytes(s[pos:pos+25]).IsP2PKH() {
+			pkhash := lib.PKHash(s[pos+3 : pos+23])
+			txo.Owner = pkhash
+		} else if len(s) >= pos+26 &&
+			s[pos] == script.OpCODESEPARATOR &&
+			script.NewFromBytes(s[pos+1:pos+26]).IsP2PKH() {
+			pkhash := lib.PKHash(s[pos+4 : pos+24])
+			txo.Owner = pkhash
+		}
+	}
 	*fromPos = pos
 
 	ins.File.Size = uint32(len(ins.File.Content))
 	hash := sha256.Sum256(ins.File.Content)
 	ins.File.Hash = hash[:]
-	insType := "file"
 	if ins.File.Size <= 1024 && utf8.Valid(ins.File.Content) && !bytes.Contains(ins.File.Content, []byte{0}) && !bytes.Contains(ins.File.Content, []byte("\\u0000")) {
 		mime := strings.ToLower(ins.File.Type)
 		if strings.HasPrefix(mime, "application") ||
 			strings.HasPrefix(mime, "text") {
-
 			var data json.RawMessage
 			err := json.Unmarshal(ins.File.Content, &data)
 			if err == nil {
-				insType = "json"
-				ins.Json = data
-				// bsv20, _ = ParseBsv20Inscription(ins.File, txo)
+				// TODO:  raise events
 			} else if AsciiRegexp.Match(ins.File.Content) {
-				if insType == "file" {
-					insType = "text"
-				}
-				ins.Text = string(ins.File.Content)
+				text := string(ins.File.Content)
 				re := regexp.MustCompile(`\W`)
 				words := map[string]struct{}{}
-				for _, word := range re.Split(ins.Text, -1) {
+				for _, word := range re.Split(text, -1) {
 					if len(word) > 0 {
 						word = strings.ToLower(word)
 						words[word] = struct{}{}
@@ -171,24 +160,15 @@ ordLoop:
 				}
 				if len(words) > 0 {
 					for word := range words {
-						ins.LogEvent("word", word)
+						idxData.Events = append(idxData.Events, &types.Event{
+							Id:    "word",
+							Value: word,
+						})
 					}
 				}
 			}
 		}
 	}
-
-	if txo.Owner == nil {
-		if len(s) >= pos+25 && script.NewFromBytes(s[pos:pos+25]).IsP2PKH() {
-			pkhash := lib.PKHash(s[pos+3 : pos+23])
-			txo.Owner = &pkhash
-		} else if len(s) >= pos+26 &&
-			s[pos] == script.OpCODESEPARATOR &&
-			script.NewFromBytes(s[pos+1:pos+26]).IsP2PKH() {
-			pkhash := lib.PKHash(s[pos+4 : pos+24])
-			txo.Owner = &pkhash
-		}
-	}
-
-	return ins
+	idxData.Data, _ = proto.Marshal(ins)
+	return idxData
 }

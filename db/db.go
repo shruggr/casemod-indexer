@@ -1,4 +1,4 @@
-package lib
+package db
 
 import (
 	"context"
@@ -11,27 +11,23 @@ import (
 
 	"github.com/GorillaPool/go-junglebus"
 	"github.com/bitcoin-sv/go-sdk/transaction"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ordishs/go-bitcoin"
 	"github.com/redis/go-redis/v9"
-	"github.com/tikv/client-go/v2/rawkv"
 )
 
 var TRIGGER = uint32(783968)
 
-var Db *pgxpool.Pool
 var Rdb *redis.Client
 var Cache *redis.Client
 var JB *junglebus.Client
 var bit *bitcoin.Bitcoind
 var ctx = context.Background()
-var TiKV *rawkv.Client
 
 var JUNGLEBUS string
 
-func Initialize(postgres *pgxpool.Pool, rdb *redis.Client, cache *redis.Client) (err error) {
-	Db = postgres
+func Initialize(rdb *redis.Client, cache *redis.Client) (err error) {
+	// Db = postgres
 	Rdb = rdb
 	Cache = cache
 

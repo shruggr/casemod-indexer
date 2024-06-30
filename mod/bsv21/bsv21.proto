@@ -1,0 +1,15 @@
+syntax = "proto3";
+package bsv21;
+option go_package = "mod/bsv21";
+
+message Bsv21 {
+    string id = 1;
+    string op = 2;
+    uint64 amt = 3;
+    uint32 dec = 4;
+    string sym = 5;
+    bytes icon = 6;
+    string contract = 7;
+    int32 status = 8;
+    string reason = 9;
+}

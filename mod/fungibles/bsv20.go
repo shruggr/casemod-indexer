@@ -197,7 +197,7 @@ func (t *TokenFunds) Save() {
 	if t.Total == 0 {
 		return
 	}
-	if err := lib.Rdb.ZAdd(ctx, "f:fund:total", redis.Z{Score: float64(t.Total), Member: t.TickID()}).Err(); err != nil {
+	if err := db.Rdb.ZAdd(ctx, "f:fund:total", redis.Z{Score: float64(t.Total), Member: t.TickID()}).Err(); err != nil {
 		panic(err)
 	}
 
@@ -205,9 +205,9 @@ func (t *TokenFunds) Save() {
 	if err != nil {
 		panic(err)
 	}
-	lib.Rdb.Publish(ctx, "tokenFunds", fundsJson)
+	db.Rdb.Publish(ctx, "tokenFunds", fundsJson)
 	key := fmt.Sprintf("f:%s:func", t.TickID())
-	if err := lib.Rdb.JSONSet(ctx, key, "$", fundsJson).Err(); err != nil {
+	if err := db.Rdb.JSONSet(ctx, key, "$", fundsJson).Err(); err != nil {
 		panic(err)
 	}
 	log.Println("Updated", string(fundsJson))
@@ -249,7 +249,7 @@ func (t *TokenFunds) UpdateFunding() {
 }
 
 func GetPendingOps(tickId string) (uint32, error) {
-	if count, err := lib.Rdb.ZCount(ctx, "stat:"+tickId, "0", "0").Result(); err != nil {
+	if count, err := db.Rdb.ZCount(ctx, "stat:"+tickId, "0", "0").Result(); err != nil {
 		return 0, err
 	} else {
 		return uint32(count), nil
@@ -257,9 +257,9 @@ func GetPendingOps(tickId string) (uint32, error) {
 }
 
 func GetFundUsed(tickId string) (int64, error) {
-	if validCount, err := lib.Rdb.ZCount(ctx, "stat:"+tickId, "1", "1").Result(); err != nil {
+	if validCount, err := db.Rdb.ZCount(ctx, "stat:"+tickId, "1", "1").Result(); err != nil {
 		return 0, err
-	} else if invalidCount, err := lib.Rdb.ZCount(ctx, "stat:"+tickId, "-1", "-1").Result(); err != nil {
+	} else if invalidCount, err := db.Rdb.ZCount(ctx, "stat:"+tickId, "-1", "-1").Result(); err != nil {
 		return 0, err
 	} else {
 		return (validCount + invalidCount) * FUNGIBLE_OP_COST, nil
@@ -267,7 +267,7 @@ func GetFundUsed(tickId string) (int64, error) {
 }
 
 func GetFundTotal(tickId string) (int64, error) {
-	if total, err := lib.Rdb.ZScore(ctx, "f:fund:total", tickId).Result(); err != nil {
+	if total, err := db.Rdb.ZScore(ctx, "f:fund:total", tickId).Result(); err != nil {
 		return 0, err
 	} else {
 		return int64(total), nil
@@ -279,7 +279,7 @@ func InitializeFunding(concurrency int) map[string]*TokenFunds {
 	limiter := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	var m sync.Mutex
-	iter := lib.Rdb.Scan(ctx, 0, "f:token:*", 0).Iterator()
+	iter := db.Rdb.Scan(ctx, 0, "f:token:*", 0).Iterator()
 	tickIds := make([]string, 0, 10000)
 	for iter.Next(ctx) {
 		key := iter.Val()
@@ -288,7 +288,7 @@ func InitializeFunding(concurrency int) map[string]*TokenFunds {
 	fmt.Println("Processing Fungible Funding")
 	for i := 0; i < len(tickIds); i += 100 {
 		keys := tickIds[i:min(i+100, len(tickIds))]
-		jsons, err := lib.Rdb.JSONMGet(ctx, "$.fundPKHash", keys...).Result()
+		jsons, err := db.Rdb.JSONMGet(ctx, "$.fundPKHash", keys...).Result()
 		if err != nil {
 			panic(err)
 		}

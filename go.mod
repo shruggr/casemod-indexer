@@ -6,10 +6,8 @@ go 1.22
 
 require (
 	github.com/GorillaPool/go-junglebus v0.3.0-alpha
-	github.com/aperturerobotics/protobuf-go-lite v0.6.5
 	github.com/bitcoin-sv/go-sdk v0.0.0-20240623221222-094574baab7c
 	github.com/bitcoinschema/go-bitcoin v0.3.20
-	github.com/fxamacker/cbor v1.5.1
 	github.com/golang-migrate/migrate v3.5.4+incompatible
 	github.com/jackc/pgx/v5 v5.6.0
 	github.com/joho/godotenv v1.5.1
@@ -18,6 +16,7 @@ require (
 	github.com/redis/go-redis/v9 v9.5.3
 	github.com/swaggo/swag v1.16.3
 	github.com/tikv/client-go/v2 v2.0.7
+	google.golang.org/protobuf v1.34.1
 )
 
 require (
@@ -52,6 +51,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.2 // indirect
+	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
@@ -82,11 +82,11 @@ require (
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/segmentio/asm v1.2.0 // indirect
 	github.com/segmentio/encoding v0.3.6 // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
 	github.com/tiancaiamao/gp v0.0.0-20221230034425-4025bc8a4d4a // indirect
 	github.com/tikv/pd/client v0.0.0-20230329114254-1948c247c2b1 // indirect
 	github.com/twmb/murmur3 v1.1.3 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/x448/float16 v0.8.4 // indirect
 	go.etcd.io/etcd/api/v3 v3.5.2 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.5.2 // indirect
 	go.etcd.io/etcd/client/v3 v3.5.2 // indirect
@@ -103,7 +103,6 @@ require (
 	golang.org/x/tools v0.7.0 // indirect
 	google.golang.org/genproto v0.0.0-20230331144136-dcfb400f0633 // indirect
 	google.golang.org/grpc v1.54.0 // indirect
-	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

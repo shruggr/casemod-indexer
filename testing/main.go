@@ -47,12 +47,12 @@ func main() {
 		log.Println(out)
 	}
 	panic("stop")
-	// err = lib.Initialize(db, rdb, cache)
+	// err = db.Initialize(db, rdb, cache)
 	// if err != nil {
 	// 	log.Panic(err)
 	// }
 
-	// tx, err := lib.JB.GetTransaction(context.Background(), hexId)
+	// tx, err := db.JB.GetTransaction(context.Background(), hexId)
 	// if err != nil {
 	// 	log.Panic(err)
 	// }

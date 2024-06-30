@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 
@@ -31,29 +30,41 @@ func NewOutpointFromString(s string) (o *Outpoint, err error) {
 	return
 }
 
-func NewOutpointFromTxOutpoint(p []byte) (o *Outpoint, err error) {
+func NewOutpointFromBytes(p []byte) *Outpoint {
 	if len(p) < 32 || len(p) > 36 {
-		return nil, errors.New("invalid pointer")
+		return nil
 	}
 	outpoint := Outpoint{
 		Txid: util.ReverseBytes(p[:32]),
 		Vout: binary.LittleEndian.Uint32(p[32:]),
 	}
 
-	o = &outpoint
-	return
+	return &outpoint
 }
 
-func (o *Outpoint) String() string {
+func (o *Outpoint) Bytes() []byte {
+	b := make([]byte, 36)
+	copy(b[:32], util.ReverseBytes(o.Txid))
+	binary.LittleEndian.PutUint32(b[32:], o.Vout)
+	return b
+}
+
+func (o *Outpoint) JsonString() string {
 	return fmt.Sprintf("%x_%d", o.Txid, o.Vout)
 }
 
-func (o Outpoint) MarshalJSON() (bytes []byte, err error) {
-	return json.Marshal(o.String())
+func (o *Outpoint) MarshalJSON() (bytes []byte, err error) {
+	return json.Marshal(o.JsonString())
 }
 
 func (o *Outpoint) UnmarshalJSON(data []byte) error {
-	outpoint, err := NewOutpointFromString(string(data))
-	*o = *outpoint
-	return err
+	if outpoint, err := NewOutpointFromString(string(data)); err != nil {
+		return err
+	} else {
+		*o = Outpoint{
+			Txid: outpoint.Txid,
+			Vout: outpoint.Vout,
+		}
+		return nil
+	}
 }

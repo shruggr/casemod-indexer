@@ -82,7 +82,7 @@ func init() {
 		log.Panicln(err.Error())
 	}
 
-	lib.Initialize(db, rdb, cache)
+	db.Initialize(db, rdb, cache)
 }
 
 // @title BSV20/21 Fungibles API

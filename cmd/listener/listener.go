@@ -14,15 +14,15 @@ import (
 
 	"github.com/GorillaPool/go-junglebus"
 	"github.com/GorillaPool/go-junglebus/models"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/casemod-indexer/lib"
+	"github.com/shruggr/casemod-indexer/db"
 )
 
 // var settled = make(chan uint32, 1000)
 var POSTGRES string
-var db *pgxpool.Pool
+
+// var db *pgxpool.Pool
 var rdb *redis.Client
 var cache *redis.Client
 
@@ -45,19 +45,9 @@ func init() {
 
 	flag.StringVar(&INDEXER, "id", "inscriptions", "Indexer name")
 	flag.StringVar(&TOPIC, "t", "", "Junglebus SuscriptionID")
-	flag.UintVar(&progress, "s", uint(lib.TRIGGER), "Start from block")
+	flag.UintVar(&progress, "s", uint(db.TRIGGER), "Start from block")
 	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
 	flag.Parse()
-
-	if POSTGRES == "" {
-		POSTGRES = os.Getenv("POSTGRES_FULL")
-	}
-	var err error
-	log.Println("POSTGRES:", POSTGRES)
-	db, err = pgxpool.New(ctx, POSTGRES)
-	if err != nil {
-		log.Panic(err)
-	}
 
 	rdb = redis.NewClient(&redis.Options{
 		Addr:     os.Getenv("REDISDB"),
@@ -71,19 +61,19 @@ func init() {
 		DB:       0,  // use default DB
 	})
 
-	lib.Initialize(db, rdb, cache)
+	db.Initialize(rdb, cache)
 }
 
 func main() {
 	var err error
-	tip, err = lib.JB.GetChaintip(ctx)
+	tip, err = db.JB.GetChaintip(ctx)
 	if err != nil {
 		panic(err)
 	}
 	go func() {
 		for {
 			time.Sleep(REFRESH)
-			if tip, err = lib.JB.GetChaintip(ctx); err != nil {
+			if tip, err = db.JB.GetChaintip(ctx); err != nil {
 				log.Println("GetChaintip", err)
 			}
 		}
@@ -188,7 +178,7 @@ func main() {
 }
 
 func subscribe(eventHandler junglebus.EventHandler) *junglebus.Subscription {
-	if sub, err := lib.JB.SubscribeWithQueue(
+	if sub, err := db.JB.SubscribeWithQueue(
 		context.Background(),
 		TOPIC,
 		uint64(progress),

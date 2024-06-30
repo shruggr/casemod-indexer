@@ -1,6 +1,6 @@
 syntax = "proto3";
 package types;
-option go_package = "types";
+option go_package = "./types";
 
 message Outpoint {
     bytes txid = 1;
@@ -25,7 +25,6 @@ message Event{
 }
 
 message IndexData {
-    string tag = 1;
     bytes data = 2;
     repeated Event events = 3;
     repeated Outpoint deps = 4;
@@ -37,7 +36,9 @@ message Txo {
     uint64 satoshis = 3;
     Block block = 4;
     optional Spend spend = 5;
-    repeated IndexData data = 6;
+    map<string, IndexData> data = 6;
+    bytes owner = 7;
+    repeated string events = 8;
 }
 
 message IndexContext {

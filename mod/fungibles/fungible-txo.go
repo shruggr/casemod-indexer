@@ -90,7 +90,7 @@ func (f *FungibleTxo) SetSpend(txCtx *lib.IndexContext, cmdable redis.Cmdable, t
 }
 
 func (f *FungibleTxo) Save(txCtx *lib.IndexContext, cmdable redis.Cmdable, txo *lib.Txo) {
-	status, err := lib.Rdb.ZScore(ctx, "oi:bsv20:stat:"+f.TickID(), txo.Outpoint.String()).Result()
+	status, err := db.Rdb.ZScore(ctx, "oi:bsv20:stat:"+f.TickID(), txo.Outpoint.String()).Result()
 	if err == redis.Nil {
 		f.SetStatus(cmdable, txo, Bsv20Status(f.Status), "")
 	} else if err != nil {
@@ -140,14 +140,14 @@ func (f *FungibleTxo) Save(txCtx *lib.IndexContext, cmdable redis.Cmdable, txo *
 
 func ValidateV2Transfer(txid lib.ByteString, tickId string, isMempool bool) (outputs int, aborted bool) {
 	log.Printf("Validating V2 Transfer %x %s\n", txid, tickId)
-	inputs, err := lib.Rdb.ZRange(ctx, fmt.Sprintf("txi:%s", txid.String()), 0, -1).Result()
+	inputs, err := db.Rdb.ZRange(ctx, fmt.Sprintf("txi:%s", txid.String()), 0, -1).Result()
 	if err != nil {
 		log.Panic(err)
 	}
 	var reason string
 	var tokensIn uint64
 	var tokenOuts []uint32
-	inTxos, err := lib.LoadTxos(inputs)
+	inTxos, err := db.LoadTxos(inputs)
 	if err != nil {
 		panic(err)
 	}
@@ -167,14 +167,14 @@ func ValidateV2Transfer(txid lib.ByteString, tickId string, isMempool bool) (out
 		}
 	}
 
-	outpoints, err := lib.Rdb.ZRangeByLex(ctx, "oi:bsv20:"+tickId, &redis.ZRangeBy{
+	outpoints, err := db.Rdb.ZRangeByLex(ctx, "oi:bsv20:"+tickId, &redis.ZRangeBy{
 		Min: txid.String(),
 		Max: fmt.Sprintf("%s_a", txid.String()),
 	}).Result()
 	if err != nil {
 		log.Panic(err)
 	}
-	outTxos, err := lib.LoadTxos(outpoints)
+	outTxos, err := db.LoadTxos(outpoints)
 	if err != nil {
 		panic(err)
 	}
@@ -195,7 +195,7 @@ func ValidateV2Transfer(txid lib.ByteString, tickId string, isMempool bool) (out
 		}
 	}
 
-	if _, err := lib.Rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+	if _, err := db.Rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		if reason != "" {
 			log.Printf("Transfer Invalid: %x %s %s\n", txid, tickId, reason)
 			for _, outTxo := range outTxos {
@@ -213,7 +213,7 @@ func ValidateV2Transfer(txid lib.ByteString, tickId string, isMempool bool) (out
 						log.Panic(err)
 					}
 					log.Println("Publishing", string(out))
-					lib.Rdb.Publish(context.Background(), "bsv20listings", out)
+					db.Rdb.Publish(context.Background(), "bsv20listings", out)
 				}
 			}
 		}

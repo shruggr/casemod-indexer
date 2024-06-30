@@ -63,7 +63,7 @@ func (b *Token) Save() {
 	}
 
 	key := b.ID()
-	lib.Rdb.Watch(ctx, func(tx *redis.Tx) error {
+	db.Rdb.Watch(ctx, func(tx *redis.Tx) error {
 		if exists, err := tx.Exists(ctx, key).Result(); err != nil {
 			panic(err)
 		} else if exists == 1 {
@@ -88,16 +88,16 @@ func IndexFungibles(txn *lib.IndexContext) {
 		spends[vin] = spend.Outpoint.String()
 		sales[vin] = bytes.Contains(*txn.Tx.Inputs[vin].UnlockingScript, ordlock.OrdLockSuffix)
 	}
-	inTxos, err := lib.LoadTxos(spends)
+	inTxos, err := db.LoadTxos(spends)
 	if err != nil {
 		panic(err)
 	}
-	// pipe := lib.Rdb.Pipeline()
+	// pipe := db.Rdb.Pipeline()
 	for vin, btxo := range inTxos {
 		if btxo == nil {
 			continue
 		}
-		btxo.SetSpend(lib.Rdb, txn.Txid, txn.Height, sales[vin])
+		btxo.SetSpend(db.Rdb, txn.Txid, txn.Height, sales[vin])
 		if btxo.PKHash == nil {
 			continue
 		}
@@ -141,10 +141,10 @@ func IndexFungibles(txn *lib.IndexContext) {
 				}
 			}
 			b.PKHash = txo.Owner
-			b.Save(lib.Rdb)
+			b.Save(db.Rdb)
 		}
 	}
-	if err := lib.Rdb.ZAdd(ctx, "tx:log", redis.Z{Score: float64(txn.Height), Member: txn.Txid.String()}).Err(); err != nil {
+	if err := db.Rdb.ZAdd(ctx, "tx:log", redis.Z{Score: float64(txn.Height), Member: txn.Txid.String()}).Err(); err != nil {
 		panic(err)
 	}
 	// _, err = pipe.Exec(ctx)
@@ -159,7 +159,7 @@ func LoadFungible(tickId string) (ftxo *Token, err error) {
 	if ft, ok := fungCache[tickId]; ok {
 		return ft, nil
 	}
-	if j, err := lib.Rdb.JSONGet(ctx, "f:token::"+tickId).Result(); err != nil {
+	if j, err := db.Rdb.JSONGet(ctx, "f:token::"+tickId).Result(); err != nil {
 		return nil, err
 	} else {
 		ftxo = &Token{}
@@ -176,7 +176,7 @@ func LoadFungibles(tickIds []string) ([]*Token, error) {
 	for i, tickId := range tickIds {
 		keys[i] = "f:token:" + tickId
 	}
-	items, err := lib.Rdb.JSONMGet(ctx, "$", keys...).Result()
+	items, err := db.Rdb.JSONMGet(ctx, "$", keys...).Result()
 	if err != nil {
 		panic(err)
 	}

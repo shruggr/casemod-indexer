@@ -5,11 +5,9 @@ p - merkleproof
 b - block
 
 
-- o:<outpoint>
+- o<outpoint>
 HASH
 txo - txo
-sats - satoshis
-script - script
-_<tag> - tagData
+spend - spend
 
     

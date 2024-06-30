@@ -2,8 +2,6 @@ syntax = "proto3";
 package ord;
 option go_package = "mod/ord";
 
-import "github.com/shruggr/casemod-indexer/casemod.proto";
-
 message File {
     bytes hash = 1;
     uint32 size = 2;
@@ -11,7 +9,19 @@ message File {
     bytes content = 4;
 }
 
+message Field {
+    bytes id = 1;
+    bytes value = 2;
+}
+
 message Inscription {
     File file = 1;
-    
+    bytes parent = 2;
+    repeated Field fields = 4;
+}
+
+message Origin {
+    bytes outpoint = 1;
+    uint32 nonce = 2;
+    map<string, bytes> data = 3;    
 }
