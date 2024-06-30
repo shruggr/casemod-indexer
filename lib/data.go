@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 
@@ -27,15 +28,18 @@ var bit *bitcoin.Bitcoind
 var ctx = context.Background()
 var TiKV *rawkv.Client
 
+var JUNGLEBUS string
+
 func Initialize(postgres *pgxpool.Pool, rdb *redis.Client, cache *redis.Client) (err error) {
 	Db = postgres
 	Rdb = rdb
 	Cache = cache
 
-	log.Println("JUNGLEBUS", os.Getenv("JUNGLEBUS"))
-	if os.Getenv("JUNGLEBUS") != "" {
+	JUNGLEBUS = os.Getenv("JUNGLEBUS")
+	log.Println("JUNGLEBUS", JUNGLEBUS)
+	if JUNGLEBUS != "" {
 		JB, err = junglebus.New(
-			junglebus.WithHTTP(os.Getenv("JUNGLEBUS")),
+			junglebus.WithHTTP(JUNGLEBUS),
 		)
 		if err != nil {
 			return
@@ -53,16 +57,18 @@ func Initialize(postgres *pgxpool.Pool, rdb *redis.Client, cache *redis.Client) 
 	return
 }
 
-func LoadTx(txid string) (tx *transaction.Transaction, err error) {
-	rawtx, err := LoadRawtx(txid)
-	if err != nil {
-		return
+func LoadTx(txid string) (*transaction.Transaction, error) {
+	if rawtx, err := LoadRawtx(txid); err != nil {
+		return nil, err
+	} else if len(rawtx) == 0 {
+		return nil, fmt.Errorf("missing-txn %s", txid)
+	} else if tx, err := transaction.NewTransactionFromBytes(rawtx); err != nil {
+		return nil, err
+	} else if tx.MerklePath, err = LoadProof(txid); err != nil {
+		return nil, err
+	} else {
+		return tx, nil
 	}
-	if len(rawtx) == 0 {
-		err = fmt.Errorf("missing-txn %s", txid)
-		return
-	}
-	return transaction.NewTxFromBytes(rawtx)
 }
 
 func LoadRawtx(txid string) (rawtx []byte, err error) {
@@ -75,9 +81,11 @@ func LoadRawtx(txid string) (rawtx []byte, err error) {
 
 	}
 
-	if len(rawtx) == 0 && JB != nil {
-		if rawtx, err = JB.GetRawTransaction(ctx, txid); err != nil {
+	if len(rawtx) == 0 && JUNGLEBUS != "" {
+		if resp, err := http.Get(fmt.Sprintf("%s/v1/tx/%s/bin", JUNGLEBUS, txid)); err != nil {
 			log.Println("JB GetRawTransaction", err)
+		} else if resp.StatusCode == 200 {
+			rawtx, _ = io.ReadAll(resp.Body)
 		}
 	}
 
@@ -95,6 +103,21 @@ func LoadRawtx(txid string) (rawtx []byte, err error) {
 
 	Cache.HSet(ctx, "tx", txid, rawtx).Err()
 	return
+}
+
+func LoadProof(txid string) (*transaction.MerklePath, error) {
+	proof, _ := Cache.HGet(ctx, "proof", txid).Bytes()
+	if len(proof) > 0 {
+		return transaction.NewMerklePathFromBinary(proof)
+	} else if JUNGLEBUS != "" {
+		if resp, err := http.Get(fmt.Sprintf("%s/v1/tx/%s/proof", JUNGLEBUS, txid)); err != nil {
+			log.Println("JB GetProof", err)
+		} else if resp.StatusCode == 200 {
+			proof, _ = io.ReadAll(resp.Body)
+			return transaction.NewMerklePathFromBinary(proof)
+		}
+	}
+	return nil, nil
 }
 
 // func LoadTxOut(outpoint *Outpoint) (txout *bt.Output, err error) {

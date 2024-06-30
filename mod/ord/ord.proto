@@ -1,0 +1,17 @@
+syntax = "proto3";
+package ord;
+option go_package = "mod/ord";
+
+import "github.com/shruggr/casemod-indexer/casemod.proto";
+
+message File {
+    bytes hash = 1;
+    uint32 size = 2;
+    string type = 3;
+    bytes content = 4;
+}
+
+message Inscription {
+    File file = 1;
+    
+}

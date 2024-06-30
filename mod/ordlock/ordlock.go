@@ -25,7 +25,7 @@ func Parse(ctx *lib.IndexContext) {
 		list := ParseScript(txo)
 		if list != nil {
 			txo.AddData("list", list)
-			txo.PKHash = &list.PKHash
+			txo.Owner = &list.PKHash
 		}
 	}
 }
@@ -64,7 +64,7 @@ func ParseScript(txo *lib.Txo) (listing *Listing) {
 				payOutput := &transaction.TransactionOutput{}
 				_, err = payOutput.ReadFrom(bytes.NewReader(ordLockParts[1]))
 				if err == nil {
-					txo.PKHash = &pkhash
+					txo.Owner = &pkhash
 					listing = &Listing{
 						PKHash: pkhash,
 						Price:  payOutput.Satoshis,

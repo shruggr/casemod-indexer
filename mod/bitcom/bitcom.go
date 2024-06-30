@@ -1,21 +1,31 @@
 package bitcom
 
 import (
-	"github.com/bitcoin-sv/go-sdk/transaction"
+	"github.com/bitcoin-sv/go-sdk/script"
 	"github.com/shruggr/casemod-indexer/lib"
 )
 
 var MAP = "1PuQa7K62MiKCtssSLKy1kh56WWU7MtUR5"
 var B = "19HxigV4QyBv3tHpQVcUEQyq1pzZVdoAut"
 
-func ParseScript(txo *lib.Txo) {
-	vout := txo.Outpoint.Vout()
-	script := *txo.Tx.Outputs[vout].LockingScript
+type Bitcom struct {
+	lib.IndexData
+	Map    *Map
+	B      *BFile
+	Sigmas []*Sigma
+}
 
+func (b *Bitcom) Tag() string {
+	return "bitcom"
+}
+
+func (b *Bitcom) Parse(txCtx *lib.IndexContext, vout uint32) lib.IndexData {
+	s := *txCtx.Tx.Outputs[vout].LockingScript
 	var opReturn int
-	for i := 0; i < len(script); {
+	bitcom := &Bitcom{}
+	for i := 0; i < len(s); {
 		startI := i
-		op, err := lib.ReadOp(script, &i)
+		op, err := lib.ReadOp(s, &i)
 		if err != nil {
 			break
 		}
@@ -24,41 +34,39 @@ func ParseScript(txo *lib.Txo) {
 			if opReturn == 0 {
 				opReturn = startI
 			}
-			ParseBitcom(txo.Tx, txo, &i)
+			ParseBitcom(txCtx, vout, &i, bitcom)
 		case script.OpDATA1:
 			if op.Data[0] == '|' && opReturn > 0 {
-				ParseBitcom(txo.Tx, txo, &i)
+				ParseBitcom(txCtx, vout, &i, bitcom)
 			}
 		}
 	}
+	return bitcom
 }
 
-func ParseBitcom(tx *transaction.Transaction, txo *lib.Txo, idx *int) {
+func ParseBitcom(txCtx *lib.IndexContext, vout uint32, idx *int, bitcom *Bitcom) {
+	txo := txCtx.Txos[vout]
 	startIdx := *idx
 	op, err := lib.ReadOp(txo.Script, idx)
 	if err != nil {
 		return
 	}
-	var bitcom lib.IIndexable
+
 	switch string(op.Data) {
 	case MAP:
-		mod := ParseMAP(txo.Script, idx)
-		bitcom = mod
-	case B:
-		mod := ParseB(txo.Script, idx)
-		bitcom = mod
-	case "SIGMA":
-		sigma := ParseSigma(tx, txo.Script, startIdx, idx)
-		sigmas := txo.Data["sigma"].(*Sigmas)
-		if sigmas == nil {
-			sigmas = &Sigmas{}
+		if bitcom.Map == nil {
+			bitcom.Map = ParseMAP(txo.Script, idx)
 		}
-		*sigmas = append(*sigmas, sigma)
-		bitcom = sigmas
+	case B:
+		if bitcom.B != nil {
+			bitcom.B = ParseB(txo.Script, idx)
+		}
+	case "SIGMA":
+		sigma := ParseSigma(txCtx, vout, startIdx, idx)
+		if sigma != nil {
+			bitcom.Sigmas = append(bitcom.Sigmas, sigma)
+		}
 	default:
 		*idx--
-	}
-	if bitcom != nil {
-		txo.AddData(bitcom.Tag(), bitcom)
 	}
 }

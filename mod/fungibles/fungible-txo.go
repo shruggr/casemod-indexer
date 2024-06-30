@@ -14,7 +14,7 @@ import (
 )
 
 type FungibleTxo struct {
-	lib.Indexable
+	lib.IndexData
 	Ticker  *string       `json:"tick,omitempty"`
 	Id      *lib.Outpoint `json:"id,omitempty"`
 	Op      string        `json:"op"`
@@ -71,8 +71,8 @@ func (f *FungibleTxo) SetSpend(txCtx *lib.IndexContext, cmdable redis.Cmdable, t
 		f.AddLog("mkt:"+f.TickID(), log)
 	}
 
-	if txo.PKHash != nil {
-		add, err := txo.PKHash.Address()
+	if txo.Owner != nil {
+		add, err := txo.Owner.Address()
 		if err != nil {
 			panic(err)
 		}
@@ -104,8 +104,8 @@ func (f *FungibleTxo) Save(txCtx *lib.IndexContext, cmdable redis.Cmdable, txo *
 		})
 	}
 
-	if txo.PKHash != nil {
-		add, err := txo.PKHash.Address()
+	if txo.Owner != nil {
+		add, err := txo.Owner.Address()
 		if err != nil {
 			panic(err)
 		}

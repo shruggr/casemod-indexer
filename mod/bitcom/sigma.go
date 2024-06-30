@@ -2,70 +2,60 @@ package bitcom
 
 import (
 	"crypto/sha256"
-	"database/sql/driver"
 	"encoding/base64"
 	"encoding/binary"
-	"encoding/json"
-	"errors"
 	"strconv"
 
 	"github.com/bitcoin-sv/go-sdk/script"
-	"github.com/bitcoin-sv/go-sdk/transaction"
 	"github.com/bitcoinschema/go-bitcoin"
-	"github.com/redis/go-redis/v9"
 	"github.com/shruggr/casemod-indexer/lib"
 )
 
-type Sigmas []*Sigma
+type Sigmas struct {
+	lib.IndexData
+	Items []*Sigma `json:"items"`
+}
 
 func (s *Sigmas) Tag() string {
 	return "sigma"
 }
-func (s *Sigmas) Save(*lib.IndexContext, redis.Cmdable, *lib.Txo)     {}
-func (s *Sigmas) SetSpend(*lib.IndexContext, redis.Cmdable, *lib.Txo) {}
-func (s *Sigmas) AddLog(logName string, log map[string]string)        {}
-func (s *Sigmas) Logs() map[string]map[string]string {
-	return map[string]map[string]string{}
-}
-func (s *Sigmas) IndexBySpent(idxName string, idxValue string) {}
-func (s *Sigmas) OutputIndex() map[string][]string {
-	return map[string][]string{}
-}
-func (s *Sigmas) IndexByScore(idxName string, idxValue string, score float64) {}
-func (s *Sigmas) ScoreIndex() map[string]map[string]float64 {
-	return map[string]map[string]float64{}
-}
 
-func (s Sigmas) Value() (driver.Value, error) {
-	return json.Marshal(s)
-}
-
-func (s *Sigmas) Scan(value interface{}) error {
-	b, ok := value.([]byte)
-	if !ok {
-		return errors.New("type assertion to []byte failed")
+func (s *Sigmas) Parse(txCtx *lib.IndexContext, vout uint32) lib.IndexData {
+	txo := txCtx.Txos[vout]
+	if bitcom, ok := txo.Data["bitcom"].(*Bitcom); ok {
+		if len(bitcom.Sigmas) > 0 {
+			sigmas := &Sigmas{Items: bitcom.Sigmas}
+			addresses := make(map[string]struct{})
+			for _, sigma := range sigmas.Items {
+				addresses[sigma.Address] = struct{}{}
+			}
+			for address := range addresses {
+				sigmas.LogEvent("address", address)
+			}
+			return sigmas
+		}
 	}
-	return json.Unmarshal(b, &s)
+	return nil
 }
 
 type Sigma struct {
-	lib.Indexable
+	lib.IndexData
 	Algorithm string `json:"algorithm"`
 	Address   string `json:"address"`
 	Signature []byte `json:"signature"`
 	Vin       uint32 `json:"vin"`
-	Valid     bool   `json:"valid"`
 }
 
 func (s *Sigma) Tag() string {
 	return "sigma"
 }
 
-func ParseSigma(tx *transaction.Transaction, script script.Script, startIdx int, idx *int) (sigma *Sigma) {
+func ParseSigma(txCtx *lib.IndexContext, vout uint32, startIdx int, idx *int) (sigma *Sigma) {
+	s := *txCtx.Tx.Outputs[vout].LockingScript
 	sigma = &Sigma{}
 	for i := 0; i < 4; i++ {
 		prevIdx := *idx
-		op, err := lib.ReadOp(script, idx)
+		op, err := lib.ReadOp(s, idx)
 		if err != nil || op.OpCode == script.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
 			*idx = prevIdx
 			break
@@ -86,26 +76,24 @@ func ParseSigma(tx *transaction.Transaction, script script.Script, startIdx int,
 		}
 	}
 
-	outpoint := tx.Inputs[sigma.Vin].PreviousTxID()
-	outpoint = binary.LittleEndian.AppendUint32(outpoint, tx.Inputs[sigma.Vin].PreviousTxOutIndex)
+	outpoint := txCtx.Tx.Inputs[sigma.Vin].SourceTXID
+	outpoint = binary.LittleEndian.AppendUint32(outpoint, txCtx.Tx.Inputs[sigma.Vin].SourceTxOutIndex)
 	inputHash := sha256.Sum256(outpoint)
 	var scriptBuf []byte
-	if script[startIdx-1] == script.OpRETURN {
-		scriptBuf = script[:startIdx-1]
-	} else if script[startIdx-1] == '|' {
-		scriptBuf = script[:startIdx-2]
+	if s[startIdx-1] == script.OpRETURN {
+		scriptBuf = s[:startIdx-1]
+	} else if s[startIdx-1] == '|' {
+		scriptBuf = s[:startIdx-2]
 	} else {
 		return nil
 	}
 	outputHash := sha256.Sum256(scriptBuf)
 	msgHash := sha256.Sum256(append(inputHash[:], outputHash[:]...))
-	err := bitcoin.VerifyMessage(sigma.Address,
+	if err := bitcoin.VerifyMessage(sigma.Address,
 		base64.StdEncoding.EncodeToString(sigma.Signature),
 		string(msgHash[:]),
-	)
-	if err != nil {
+	); err != nil {
 		return nil
 	}
-	sigma.Valid = true
 	return
 }

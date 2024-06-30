@@ -140,7 +140,7 @@ func IndexFungibles(txn *lib.IndexContext) {
 					b.Listing.PricePer = float64(b.Listing.Price) / (float64(b.Amt) / math.Pow(10, float64(f.Decimals)))
 				}
 			}
-			b.PKHash = txo.PKHash
+			b.PKHash = txo.Owner
 			b.Save(lib.Rdb)
 		}
 	}

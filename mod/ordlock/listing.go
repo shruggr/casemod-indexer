@@ -6,7 +6,7 @@ import (
 )
 
 type Listing struct {
-	lib.Indexable
+	lib.IndexData
 	PKHash   lib.PKHash `json:"-"`
 	Price    uint64     `json:"price"`
 	PayOut   []byte     `json:"payout"`

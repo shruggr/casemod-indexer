@@ -12,13 +12,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/bitcoin-sv/go-sdk/script"
 	"github.com/jackc/pgx/v5"
 	"github.com/libsv/go-bk/bip32"
 	"github.com/libsv/go-bk/crypto"
 	"github.com/redis/go-redis/v9"
 	"github.com/shruggr/casemod-indexer/lib"
-	"github.com/shruggr/casemod-indexer/mod/ord"
 )
 
 type Bsv20Status int
@@ -40,7 +38,7 @@ var ctx = context.Background()
 func ParseBsv20Inscription(ord *lib.File, txo *lib.Txo) (interface{}, error) {
 	mime := strings.ToLower(ord.Type)
 	if !strings.HasPrefix(mime, "application/bsv-20") &&
-		!(txo.Height > 0 && txo.Height < 793000 && strings.HasPrefix(mime, "text/plain")) {
+		!(txo.Block.Height > 0 && txo.Block.Height < 793000 && strings.HasPrefix(mime, "text/plain")) {
 		return nil, nil
 	}
 	data := map[string]string{}
@@ -309,11 +307,11 @@ func InitializeFunding(concurrency int) map[string]*TokenFunds {
 					wg.Done()
 					<-limiter
 				}()
-				add, err := script.NewAddressFromPublicKeyHash(funds.PKHash, true)
-				if err != nil {
-					log.Panicln(err)
-				}
-				ord.RefreshAddress(ctx, add.AddressString)
+				// add, err := script.NewAddressFromPublicKeyHash(funds.PKHash, true)
+				// if err != nil {
+				// 	log.Panicln(err)
+				// }
+				// ord.RefreshAddress(ctx, add.AddressString)
 
 				funds.UpdateFunding()
 				m.Lock()

@@ -5,63 +5,57 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"regexp"
-	"strconv"
+	"slices"
 	"strings"
-	"time"
 	"unicode/utf8"
 
+	"github.com/bitcoin-sv/go-sdk/script"
 	"github.com/fxamacker/cbor"
-	"github.com/redis/go-redis/v9"
 	"github.com/shruggr/casemod-indexer/lib"
 	"github.com/shruggr/casemod-indexer/mod/bitcom"
+	"github.com/shruggr/casemod-indexer/types"
 )
 
+var AsciiRegexp = regexp.MustCompile(`^[[:ascii:]]*$`)
+
 type Inscription struct {
-	lib.Indexable
 	Json      json.RawMessage        `json:"json,omitempty"`
 	Text      string                 `json:"text,omitempty"`
-	Words     []string               `json:"words,omitempty"`
 	File      *lib.File              `json:"file,omitempty"`
 	Pointer   *uint64                `json:"pointer,omitempty"`
-	Parent    *lib.Outpoint          `json:"parent,omitempty"`
+	Parent    *types.Outpoint        `json:"parent,omitempty"`
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 	Metaproto []byte                 `json:"metaproto,omitempty"`
 	Fields    map[string]interface{} `json:"-"`
 }
 
 func (i *Inscription) Tag() string {
-	return "insc"
+	return "ord"
 }
 
-func (i *Inscription) Save(txCtx *lib.IndexContext, cmdable redis.Cmdable, txo *lib.Txo) {
-	scoreHeight := txCtx.Height
-	if scoreHeight == 0 {
-		scoreHeight = uint32(time.Now().Unix())
-	}
-	if score, err := strconv.ParseFloat(fmt.Sprintf("%d.%010d", scoreHeight, txCtx.Idx), 64); err != nil {
-		panic(err)
-	} else {
-		i.IndexByScore("seq", txo.Outpoint.String(), score)
-	}
-}
+func (i *Inscription) Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
+	txo := idxCtx.Txos[vout]
+	// s := *idxCtx.Tx.Outputs[vout].LockingScript
 
-func ParseScript(txo *lib.Txo) {
-	vout := txo.Outpoint.Vout()
-	script := *txo.Tx.Outputs[vout].LockingScript
-
-	for i := 0; i < len(script); {
+	idxData := &types.IndexData{
+		Events: []*types.Event{},
+		Deps:   []*types.Outpoint{},
+	}
+	for i := 0; i < len(txo.Script); {
 		startI := i
-		if op, err := lib.ReadOp(script, &i); err != nil {
+		if op, err := lib.ReadOp(txo.Script, &i); err != nil {
 			break
-		} else if op.OpCode == script.OpDATA3 && i > 2 && bytes.Equal(op.Data, []byte("ord")) && script[startI-2] == 0 && script[startI-1] == script.OpIF {
-			ParseInscription(txo, script, &i)
+		} else if op.OpCode == script.OpDATA3 && i > 2 && bytes.Equal(op.Data, []byte("ord")) && s[startI-2] == 0 && s[startI-1] == script.OpIF {
+			insc := ParseInscription(idxCtx, vout, txo.Script, &i)
+			idxData.Data = 
 		}
 	}
+	return nil
 }
 
-func ParseInscription(txo *lib.Txo, script []byte, fromPos *int) {
+func ParseInscription(txCtx *types.IndexContext, vout uint32, s []byte, fromPos *int) *Inscription {
+	txo := txCtx.Txos[vout]
 	pos := *fromPos
 	ins := &Inscription{
 		File: &lib.File{},
@@ -69,14 +63,14 @@ func ParseInscription(txo *lib.Txo, script []byte, fromPos *int) {
 
 ordLoop:
 	for {
-		op, err := lib.ReadOp(script, &pos)
+		op, err := lib.ReadOp(s, &pos)
 		if err != nil || op.OpCode > script.Op16 {
-			return
+			return nil
 		}
 
-		op2, err := lib.ReadOp(script, &pos)
+		op2, err := lib.ReadOp(s, &pos)
 		if err != nil || op2.OpCode > script.Op16 {
-			return
+			return nil
 		}
 
 		var field int
@@ -96,6 +90,7 @@ ordLoop:
 				pos := 0
 				md := bitcom.ParseMAP(*script, &pos)
 				if md != nil {
+
 					txo.AddData("map", md)
 				}
 			}
@@ -109,18 +104,25 @@ ordLoop:
 		case 1:
 			if len(op2.Data) < 256 && utf8.Valid(op2.Data) {
 				ins.File.Type = string(op2.Data)
+				ins.LogEvent("type", ins.File.Type)
 			}
 		case 2:
 			pointer := binary.LittleEndian.Uint64(op2.Data)
 			ins.Pointer = &pointer
 		case 3:
 			if parent, err := lib.NewOutpointFromTxOutpoint(op2.Data); err == nil {
-				ins.Parent = parent
+				if slices.ContainsFunc(txCtx.Spends, func(spend *lib.Txo) bool {
+					origin := spend.Data["origin"]
+					return origin != nil && bytes.Equal(*spend.Outpoint, *parent)
+				}) {
+					ins.Parent = parent
+					ins.LogEvent("parent", parent.String())
+				}
 			}
 		case 5:
 			md := &bitcom.Map{}
-			if err := cbor.Unmarshal(op2.Data, md); err == nil {
-				ins.Metadata = *md
+			if err := cbor.Unmarshal(op2.Data, md.Data); err == nil {
+				ins.Metadata = md.Data
 			}
 		case 7:
 			ins.Metaproto = op2.Data
@@ -128,14 +130,14 @@ ordLoop:
 			ins.File.Encoding = string(op2.Data)
 		default:
 			if ins.Fields == nil {
-				ins.Fields = bitcom.Map{}
+				ins.Fields = map[string]interface{}{}
 			}
 
 		}
 	}
-	op, err := lib.ReadOp(script, &pos)
+	op, err := lib.ReadOp(s, &pos)
 	if err != nil || op.OpCode != script.OpENDIF {
-		return
+		return nil
 	}
 	*fromPos = pos
 
@@ -168,26 +170,25 @@ ordLoop:
 					}
 				}
 				if len(words) > 0 {
-					ins.Words = make([]string, 0, len(words))
 					for word := range words {
-						ins.Words = append(ins.Words, word)
+						ins.LogEvent("word", word)
 					}
 				}
 			}
 		}
 	}
 
-	if txo.PKHash != nil && len(*txo.PKHash) == 0 {
-		if len(script) >= pos+25 && script.NewFromBytes(script[pos:pos+25]).IsP2PKH() {
-			pkhash := lib.PKHash(script[pos+3 : pos+23])
-			txo.PKHash = &pkhash
-		} else if len(script) >= pos+26 &&
-			script[pos] == script.OpCODESEPARATOR &&
-			script.NewFromBytes(script[pos+1:pos+26]).IsP2PKH() {
-			pkhash := lib.PKHash(script[pos+4 : pos+24])
-			txo.PKHash = &pkhash
+	if txo.Owner == nil {
+		if len(s) >= pos+25 && script.NewFromBytes(s[pos:pos+25]).IsP2PKH() {
+			pkhash := lib.PKHash(s[pos+3 : pos+23])
+			txo.Owner = &pkhash
+		} else if len(s) >= pos+26 &&
+			s[pos] == script.OpCODESEPARATOR &&
+			script.NewFromBytes(s[pos+1:pos+26]).IsP2PKH() {
+			pkhash := lib.PKHash(s[pos+4 : pos+24])
+			txo.Owner = &pkhash
 		}
 	}
 
-	txo.AddData("insc", ins)
+	return ins
 }

@@ -2,52 +2,32 @@ package bitcom
 
 import (
 	"bytes"
-	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"unicode/utf8"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/bitcoin-sv/go-sdk/script"
 	"github.com/shruggr/casemod-indexer/lib"
 )
 
-type Map map[string]interface{}
+type Map struct {
+	lib.IndexData
+	Data map[string]interface{}
+}
 
 func (m *Map) Tag() string {
 	return "map"
 }
-func (m *Map) Save(*lib.IndexContext, redis.Cmdable, *lib.Txo)     {}
-func (m *Map) SetSpend(*lib.IndexContext, redis.Cmdable, *lib.Txo) {}
-func (m *Map) AddLog(logName string, log map[string]string)        {}
-func (m *Map) Logs() map[string]map[string]string {
-	return map[string]map[string]string{}
-}
-func (m *Map) IndexBySpent(idxName string, idxValue string) {}
-func (m *Map) OutputIndex() map[string][]string {
-	return map[string][]string{}
-}
-func (m *Map) IndexByScore(idxName string, idxValue string, score float64) {}
-func (m *Map) ScoreIndex() map[string]map[string]float64 {
-	return map[string]map[string]float64{}
-}
 
-func (m Map) Value() (driver.Value, error) {
-	if m == nil {
-		return nil, nil
+func (m *Map) Parse(ic *lib.IndexContext, vout uint32) lib.IndexData {
+	txo := ic.Txos[vout]
+	if bitcom, ok := txo.Data["bitcom"].(*Bitcom); ok {
+		return bitcom.Map
 	}
-	return json.Marshal(m)
+	return nil
 }
 
-func (m *Map) Scan(value interface{}) error {
-	b, ok := value.([]byte)
-	if !ok {
-		return errors.New("type assertion to []byte failed")
-	}
-	return json.Unmarshal(b, &m)
-}
-
-func ParseMAP(script []byte, idx *int) *Map {
-	op, err := lib.ReadOp(script, idx)
+func ParseMAP(s []byte, idx *int) *Map {
+	op, err := lib.ReadOp(s, idx)
 	if err != nil {
 		return nil
 	}
@@ -57,14 +37,14 @@ func ParseMAP(script []byte, idx *int) *Map {
 	mp := Map{}
 	for {
 		prevIdx := *idx
-		op, err = lib.ReadOp(script, idx)
+		op, err = lib.ReadOp(s, idx)
 		if err != nil || op.OpCode == script.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
 			*idx = prevIdx
 			break
 		}
 		opKey := op.Data
 		prevIdx = *idx
-		op, err = lib.ReadOp(script, idx)
+		op, err = lib.ReadOp(s, idx)
 		if err != nil || op.OpCode == script.OpRETURN || (op.OpCode == 1 && op.Data[0] == '|') {
 			*idx = prevIdx
 			break
@@ -85,16 +65,22 @@ func ParseMAP(script []byte, idx *int) *Map {
 			op.Data = []byte{}
 		}
 
-		mp[string(opKey)] = string(op.Data)
+		mp.Data[string(opKey)] = string(op.Data)
+		mp.LogEvent(string(opKey), string(op.Data))
 
 	}
-	if val, ok := mp["subTypeData"].(string); ok {
+	if val, ok := mp.Data["subTypeData"].(string); ok {
 		if bytes.Contains([]byte(val), []byte{0}) || bytes.Contains([]byte(val), []byte("\\u0000")) {
-			delete(mp, "subTypeData")
+			delete(mp.Data, "subTypeData")
 		} else {
-			var subTypeData json.RawMessage
+			var subTypeData map[string]interface{}
 			if err := json.Unmarshal([]byte(val), &subTypeData); err == nil {
-				mp["subTypeData"] = subTypeData
+				mp.Data["subTypeData"] = subTypeData
+				for k, v := range subTypeData {
+					if sv, ok := v.(string); ok {
+						mp.LogEvent("subTypeData."+k, sv)
+					}
+				}
 			}
 		}
 	}

@@ -1,0 +1,49 @@
+syntax = "proto3";
+package types;
+option go_package = "types";
+
+message Outpoint {
+    bytes txid = 1;
+    uint32 vout = 2;
+}
+
+message Block {
+    uint32 height = 1;
+    uint64 idx = 2;
+    string hash = 3;
+}
+
+message Spend {
+    bytes txid = 1;
+    uint32 vin = 2;
+    Block block = 3;
+}
+
+message Event{
+    string id = 1;
+    string value = 2;
+}
+
+message IndexData {
+    string tag = 1;
+    bytes data = 2;
+    repeated Event events = 3;
+    repeated Outpoint deps = 4;
+}
+
+message Txo {
+    Outpoint outpoint = 1;
+    bytes script = 2;
+    uint64 satoshis = 3;
+    Block block = 4;
+    optional Spend spend = 5;
+    repeated IndexData data = 6;
+}
+
+message IndexContext {
+    bytes rawtx = 1;
+    bytes txid = 2;
+    Block block = 3;
+    repeated Txo spends = 4;
+    repeated Txo txos = 5;
+}

@@ -1,7 +1,7 @@
 package lib
 
 type Case struct {
-	Indexable
+	IndexData
 	Data   []byte
 	Fields map[string]string
 	Logs   map[string]map[string]string

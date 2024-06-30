@@ -1,92 +1,102 @@
-package ord
+package origin
 
 import (
 	"log"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/shruggr/casemod-indexer/lib"
 	"github.com/shruggr/casemod-indexer/mod/bitcom"
+	"github.com/shruggr/casemod-indexer/mod/ord"
 )
 
 const MAX_DEPTH = 1024
 
 type Origin struct {
-	lib.Indexable
-	Outpoint *lib.Outpoint     `json:"outpoint"`
-	Nonce    uint32            `json:"nonce"`
-	Data     map[string]string `json:"map,omitempty"`
+	lib.IndexData
+	Outpoint *lib.Outpoint          `json:"outpoint"`
+	Nonce    uint32                 `json:"nonce"`
+	Data     map[string]interface{} `json:"map,omitempty"`
 }
 
 func (o *Origin) Tag() string {
 	return "origin"
 }
 
-func (o *Origin) Parse(ctx *lib.IndexContext) {
-	for _, txo := range ctx.Txos {
-		if txo.Satoshis != 1 {
-			continue
-		}
-		origin := LoadOrigin(ctx, txo)
-		if origin != nil {
-			txo.AddData("origin", origin)
-		}
-	}
-}
-
-func (o *Origin) ParseTxo(ctx *lib.IndexContext, txo *lib.Txo) {
+func (o *Origin) Parse(txCtx *lib.IndexContext, vout uint32) lib.IndexData {
+	txo := txCtx.Txos[vout]
 	if txo.Satoshis != 1 {
-		return
+		return nil
 	}
-	bitcom.ParseScript(txo)
-	origin := LoadOrigin(ctx, txo)
-	if origin != nil {
-		txo.AddData("origin", origin)
-	}
+
+	return calcOrigin(txCtx, vout, 0)
 }
 
-func LoadOrigin(txCtx *lib.IndexContext, txo *lib.Txo) *Origin {
-	return calcOrigin(txCtx, txo, 0)
-}
-
-func calcOrigin(txCtx *lib.IndexContext, txo *lib.Txo, depth uint32) *Origin {
+func calcOrigin(txCtx *lib.IndexContext, vout uint32, depth uint32) *Origin {
 	if depth > MAX_DEPTH {
 		return nil
 	}
-	var origin *Origin
-	for _, spend := range txCtx.Spends {
-		if spend.Satoshis == 1 && spend.InAcc == txo.OutAcc {
-			if origin = spend.Data["origin"].(*Origin); origin == nil {
+	txo := txCtx.Txos[vout]
+	for vin, spend := range txCtx.Spends {
+		if spend.Satoshis == 1 && spend.Spend.InAcc == txo.OutAcc {
+			var origin *Origin
+			if data, ok := spend.Data["origin"].(map[string]interface{}); !ok {
 				if rawtx, err := lib.LoadRawtx(spend.Outpoint.TxidStr()); err != nil {
 					log.Panic(err)
-				} else if spendCtx, err := lib.ParseTxn(rawtx, "", 0, 0); err != nil {
+				} else if spendCtx, err := lib.ParseTxn(rawtx, nil, []lib.Indexer{
+					&ord.Inscription{},
+					&bitcom.Bitcom{},
+					&bitcom.Map{},
+					&Origin{},
+				}); err != nil {
 					log.Panic(err)
-				} else if origin = calcOrigin(spendCtx, spend, depth+1); origin != nil {
+				} else if origin = calcOrigin(spendCtx, spend.Outpoint.Vout(), depth+1); origin != nil {
+					for _, spend := range txCtx.Spends[0:vin] {
+						origin.AddDependencies(spend.Outpoint.Txid())
+					}
 					spend.AddData("origin", origin)
 					spend.Save(spendCtx, lib.Rdb)
 				}
-			}
-			if origin != nil {
-				// if
-				return &Origin{
-					Outpoint: origin.Outpoint,
-					Nonce:    origin.Nonce + 1,
+			} else {
+				origin = &Origin{}
+				for k, v := range data {
+					switch k {
+					case "outpoint":
+						origin.Outpoint, _ = lib.NewOutpointFromString(v.(string))
+					case "nonce":
+						origin.Nonce = uint32(v.(float64))
+					case "map":
+						origin.Data = v.(map[string]interface{})
+					}
 				}
 			}
+			if origin != nil {
+				origin.Nonce = origin.Nonce + 1
+				if mp, ok := txo.Data["map"].(*bitcom.Map); ok {
+					for k, v := range mp.Data {
+						origin.Data[k] = v
+					}
+				}
+				return origin
+			}
 			return nil
-		} else if spend.InAcc > txo.OutAcc {
+		} else if spend.Spend.InAcc > txo.OutAcc {
 			break
 		}
 	}
-	return &Origin{
+	origin := &Origin{
 		Outpoint: txo.Outpoint,
-		Nonce:    0,
-		Data:     map[string]string{},
+		Data:     map[string]interface{}{},
 	}
+	if mp, ok := txo.Data["map"].(*bitcom.Map); ok {
+		for k, v := range mp.Data {
+			origin.Data[k] = v
+		}
+	}
+	return origin
 }
 
-func (o *Origin) Save(ctx *lib.IndexContext, cmdable redis.Cmdable, txo *lib.Txo) {
-	o.IndexBySpent(o.Outpoint.String(), txo.Outpoint.String())
-}
+// func (o *Origin) Save(ctx *lib.IndexContext, cmdable redis.Cmdable, txo *lib.Txo) {
+// 	o.IndexBySpent(o.Outpoint.String(), txo.Outpoint.String())
+// }
 
 // func SaveMap(origin *lib.Outpoint) {
 // 	rows, err := lib.Db.Query(context.Background(), `

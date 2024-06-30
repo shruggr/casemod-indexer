@@ -1,123 +1,108 @@
 package lib
 
-import (
-	"context"
-	"encoding/binary"
-	"encoding/hex"
-	"time"
-
-	"github.com/bitcoin-sv/go-sdk/script"
-	"github.com/libsv/go-bt"
-	// "github.com/libsv/go-bt/v2"
-	"github.com/redis/go-redis/v9"
-)
-
 const THREADS = 64
 
-func IndexTxn(rawtx []byte, blockId string, height uint32, idx uint64) (ctx *IndexContext, err error) {
-	ctx, err = ParseTxn(rawtx, blockId, height, idx)
-	if err != nil {
-		return
-	}
-	pipe := Rdb.Pipeline()
+// func IndexTxn(rawtx []byte, block *Block, indexers []Indexer) (ctx *IndexContext, err error) {
+// 	ctx, err = ParseTxn(rawtx, block, indexers)
+// 	if err != nil {
+// 		return
+// 	}
+// 	pipe := Rdb.Pipeline()
 
-	ctx.SaveSpends(pipe)
+// 	ctx.SaveSpends(pipe)
 
-	ctx.SaveTxos(pipe)
-	score := ctx.Height
-	if score == 0 {
-		score = uint32(time.Now().Unix())
-	}
-	pipe.ZAddNX(context.Background(), "tx:log", redis.Z{
-		Score:  float64(score),
-		Member: hex.EncodeToString(ctx.Txid),
-	})
-	_, err = pipe.Exec(context.Background())
-	return
-}
+// 	ctx.SaveTxos(pipe)
+// 	pipe.ZAddNX(context.Background(), "tx:log", redis.Z{
+// 		Score:  float64(ctx.Block.Height),
+// 		Member: hex.EncodeToString(ctx.Txid),
+// 	})
+// 	_, err = pipe.Exec(context.Background())
+// 	return
+// }
 
-func ParseTxn(rawtx []byte, blockId string, height uint32, idx uint64) (ctx *IndexContext, err error) {
-	tx, err := bt.NewTxFromBytes(rawtx)
-	if err != nil {
-		panic(err)
-	}
-	txid := tx.TxIDBytes()
-	ctx = &IndexContext{
-		Tx:     tx,
-		Txid:   txid,
-		Spends: make([]*Txo, 0, len(tx.Inputs)),
-		Txos:   make([]*Txo, 0, len(tx.Outputs)),
-	}
-	if height > 0 {
-		ctx.BlockId = &blockId
-		ctx.Height = height
-		ctx.Idx = idx
-	}
+// func ParseTxn(rawtx []byte, block *Block, indexers []Indexer) (ctx *IndexContext, err error) {
+// 	tx, err := transaction.NewTransactionFromBytes(rawtx)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	txid := tx.TxIDBytes()
+// 	ctx = &IndexContext{
+// 		Tx:     tx,
+// 		Txid:   txid,
+// 		Spends: make([]*Txo, 0, len(tx.Inputs)),
+// 		Txos:   make([]*Txo, 0, len(tx.Outputs)),
+// 	}
+// 	if block == nil {
+// 		block = &Block{
+// 			Height: uint32(time.Now().Unix()),
+// 		}
+// 	}
+// 	ctx.Block = block
 
-	if !tx.IsCoinbase() {
-		ParseSpends(ctx)
-	}
+// 	if !tx.IsCoinbase() {
+// 		ParseSpends(ctx)
+// 	}
 
-	ParseTxos(ctx)
-	return
-}
+// 	ParseTxos(ctx, indexers)
+// 	return
+// }
 
-func ParseSpends(ctx *IndexContext) {
-	inAcc := uint64(0)
-	for vin, txin := range ctx.Tx.Inputs {
-		outpoint := NewOutpoint(txin.PreviousTxID(), txin.PreviousTxOutIndex)
-		spend, err := LoadTxo(outpoint.String())
-		if err != nil {
-			panic(err)
-		}
-		if spend == nil {
-			if inTx, err := LoadTx(txin.PreviousTxIDStr()); err != nil {
-				panic(err)
-			} else {
-				inCtx := &IndexContext{
-					Tx:   inTx,
-					Txid: inTx.TxIDBytes(),
-				}
-				ParseTxos(inCtx)
-				spend = inCtx.Txos[txin.PreviousTxOutIndex]
-			}
-		}
-		spend.Spend = &ctx.Txid
-		spend.Vin = uint32(vin)
-		spend.SpendHeight = ctx.Height
-		spend.SpendIdx = ctx.Idx
-		spend.InAcc = inAcc
-		ctx.Spends = append(ctx.Spends, spend)
-		inAcc += spend.Satoshis
-	}
-}
+// func ParseSpends(ctx *IndexContext) {
+// 	inAcc := uint64(0)
+// 	for vin, txin := range ctx.Tx.Inputs {
+// 		outpoint := NewOutpoint(txin.SourceTXID, txin.SourceTxOutIndex)
+// 		spend, err := LoadTxo(outpoint.String())
+// 		if err != nil {
+// 			panic(err)
+// 		}
+// 		if spend == nil {
+// 			if inTx, err := LoadTx(txin.PreviousTxIDStr()); err != nil {
+// 				panic(err)
+// 			} else {
+// 				inCtx := &IndexContext{
+// 					Tx:   inTx,
+// 					Txid: inTx.TxIDBytes(),
+// 				}
+// 				ParseTxos(inCtx, []Indexer{})
+// 				spend = inCtx.Txos[txin.SourceTxOutIndex]
+// 			}
+// 		}
 
-func ParseTxos(ctx *IndexContext) {
-	height := ctx.Height
-	if height == 0 {
-		height = uint32(time.Now().Unix())
-	}
-	accSats := uint64(0)
-	for vout, txout := range ctx.Tx.Outputs {
-		outpoint := Outpoint(binary.BigEndian.AppendUint32(ctx.Txid, uint32(vout)))
-		txo := &Txo{
-			Height:   ctx.Height,
-			Idx:      ctx.Idx,
-			Satoshis: txout.Satoshis,
-			OutAcc:   accSats,
-			Outpoint: &outpoint,
-			Script:   *txout.LockingScript,
-		}
+// 		spend.Spend = &Spend{
+// 			Txid:  ctx.Txid,
+// 			Vin:   uint32(vin),
+// 			InAcc: inAcc,
+// 			Block: *ctx.Block,
+// 		}
+// 		ctx.Spends = append(ctx.Spends, spend)
+// 		inAcc += spend.Satoshis
+// 	}
+// }
 
-		if len(txo.Script) >= 25 && script.NewFromBytes(txo.Script[:25]).IsP2PKH() {
-			pkhash := PKHash(txo.Script[3:23])
-			txo.PKHash = &pkhash
-		}
+// func ParseTxos(ctx *IndexContext, indexers []Indexer) {
+// 	accSats := uint64(0)
+// 	for vout, txout := range ctx.Tx.Outputs {
+// 		outpoint := Outpoint(binary.BigEndian.AppendUint32(ctx.Txid, uint32(vout)))
+// 		txo := &Txo{
+// 			Outpoint: &outpoint,
+// 			Satoshis: txout.Satoshis,
+// 			OutAcc:   accSats,
+// 			Script:   *txout.LockingScript,
+// 			Block:    ctx.Block,
+// 		}
 
-		ctx.Txos = append(ctx.Txos, txo)
-		accSats += txout.Satoshis
-	}
-}
+// 		if len(txo.Script) >= 25 && script.NewFromBytes(txo.Script[:25]).IsP2PKH() {
+// 			pkhash := PKHash(txo.Script[3:23])
+// 			txo.Owner = &pkhash
+// 		}
+
+// 		for _, indexer := range indexers {
+// 			indexer.Parse(ctx, uint32(vout))
+// 		}
+// 		ctx.Txos = append(ctx.Txos, txo)
+// 		accSats += txout.Satoshis
+// 	}
+// }
 
 // var spendsCache = make(map[string][]*Txo)
 // var m sync.Mutex
