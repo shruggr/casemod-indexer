@@ -12,6 +12,7 @@ import (
 	"github.com/bitcoin-sv/go-sdk/script"
 	"github.com/shruggr/casemod-indexer/lib"
 	"github.com/shruggr/casemod-indexer/types"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
@@ -20,7 +21,7 @@ var AsciiRegexp = regexp.MustCompile(`^[[:ascii:]]*$`)
 type InscriptionIndexer struct{}
 
 func (i *InscriptionIndexer) Tag() string {
-	return "ord"
+	return "insc"
 }
 
 func (i *InscriptionIndexer) Save(idxCtx *types.IndexContext) {}
@@ -44,7 +45,7 @@ func (ii *InscriptionIndexer) Parse(idxCtx *types.IndexContext, vout uint32) *ty
 
 func (i *InscriptionIndexer) UnmarshalData(raw []byte) (protoreflect.ProtoMessage, error) {
 	ins := &Inscription{}
-	if err := json.Unmarshal(raw, ins); err != nil {
+	if err := proto.Unmarshal(raw, ins); err != nil {
 		return nil, err
 	} else {
 		return ins, nil

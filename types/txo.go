@@ -5,7 +5,7 @@ type Txo struct {
 	Data map[string]*IndexData
 }
 
-func (t *Txo) FromRawTxo(raw *RawTxo, indexers []Indexer) {
+func (t *Txo) FromRawTxo(raw *RawTxo, indexers []Indexer) *Txo {
 	t.RawTxo = RawTxo{
 		Outpoint: raw.Outpoint,
 		Satoshis: raw.Satoshis,
@@ -19,7 +19,9 @@ func (t *Txo) FromRawTxo(raw *RawTxo, indexers []Indexer) {
 	t.Data = make(map[string]*IndexData)
 	for _, indexer := range indexers {
 		rawData := raw.RawData[indexer.Tag()]
-		if item, err := indexer.UnmarshalData(raw.RawData[indexer.Tag()].Data); err != nil {
+		if rawData == nil {
+			continue
+		} else if item, err := indexer.UnmarshalData(raw.RawData[indexer.Tag()].Data); err != nil {
 			panic(err)
 		} else if item != nil {
 			t.Data[indexer.Tag()] = &IndexData{
@@ -33,5 +35,5 @@ func (t *Txo) FromRawTxo(raw *RawTxo, indexers []Indexer) {
 			}
 		}
 	}
-
+	return t
 }

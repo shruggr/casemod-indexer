@@ -28,6 +28,10 @@ type Indexer interface {
 	UnmarshalData(raw []byte) (protoreflect.ProtoMessage, error)
 }
 
-func (e *Event) Key(tag string, txid string, vout uint32, satoshis uint64) string {
+func (e *Event) EventKey(tag string, txid string, vout uint32, satoshis uint64) string {
 	return fmt.Sprintf("%s:%s:%s:%s:%d:%d", tag, e.Id, e.Value, txid, vout, satoshis)
+}
+
+func (e *Event) OwnerKey(owner string, tag string, txid string, vout uint32, satoshis uint64) string {
+	return fmt.Sprintf("%s:%s:%s:%s:%s:%d:%d", owner, tag, e.Id, e.Value, txid, vout, satoshis)
 }

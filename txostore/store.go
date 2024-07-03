@@ -17,7 +17,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func Parse(ctx context.Context, tx *transaction.Transaction, indexers []types.Indexer) (*types.IndexContext, error) {
+type Store struct {
+	Indexers []types.Indexer
+}
+
+func (s *Store) Parse(ctx context.Context, tx *transaction.Transaction) (*types.IndexContext, error) {
 	var err error
 	txid := tx.TxIDBytes()
 
@@ -49,7 +53,7 @@ func Parse(ctx context.Context, tx *transaction.Transaction, indexers []types.In
 				if input.SourceTransaction, err = db.LoadTx(ctx, hex.EncodeToString(input.SourceTXID)); err != nil {
 					return nil, err
 				}
-			} else if _, err = Ingest(ctx, input.SourceTransaction, indexers); err != nil {
+			} else if _, err = s.Ingest(ctx, input.SourceTransaction); err != nil {
 				return nil, err
 			}
 
@@ -57,22 +61,17 @@ func Parse(ctx context.Context, tx *transaction.Transaction, indexers []types.In
 				Txid: input.SourceTXID,
 				Vout: input.SourceTxOutIndex,
 			}
-			spend := &types.Txo{
-				RawTxo: types.RawTxo{
-					RawData: make(map[string]*types.RawData),
-				},
-				Data: make(map[string]*types.IndexData),
-			}
-
+			rawTxo := &types.RawTxo{}
 			if t, err := db.Rdb.HGet(ctx, "to:"+outpoint.JsonString(), "txo").Bytes(); err == redis.Nil {
-				spend.Outpoint = outpoint
-				spend.Satoshis = *input.PreviousTxSatoshis()
-				spend.Script = *input.PreviousTxScript()
+				rawTxo.Outpoint = outpoint
+				rawTxo.Satoshis = *input.PreviousTxSatoshis()
+				rawTxo.Script = *input.PreviousTxScript()
 			} else if err != nil {
 				return nil, err
-			} else if err = proto.Unmarshal(t, &spend.RawTxo); err != nil {
+			} else if err = proto.Unmarshal(t, rawTxo); err != nil {
 				return nil, err
 			}
+			spend := (&types.Txo{}).FromRawTxo(rawTxo, s.Indexers)
 			spend.Spend = &types.Spend{
 				Txid:  txid,
 				Vin:   uint32(vin),
@@ -87,18 +86,20 @@ func Parse(ctx context.Context, tx *transaction.Transaction, indexers []types.In
 			Txid: txid,
 			Vout: uint32(vout),
 		}
-		txo := &types.Txo{
-			Data: make(map[string]*types.IndexData),
-		}
+		// txo := &types.Txo{
+		// 	Data: make(map[string]*types.IndexData),
+		// }
+		rawTxo := &types.RawTxo{}
 		if t, err := db.Rdb.HGet(ctx, "to:"+outpoint.JsonString(), "txo").Bytes(); err == redis.Nil {
-			txo.Outpoint = outpoint
-			txo.Satoshis = output.Satoshis
-			txo.Script = *output.LockingScript
+			rawTxo.Outpoint = outpoint
+			rawTxo.Satoshis = output.Satoshis
+			rawTxo.Script = *output.LockingScript
 		} else if err != nil {
 			return nil, err
-		} else if err = proto.Unmarshal(t, &txo.RawTxo); err != nil {
+		} else if err = proto.Unmarshal(t, rawTxo); err != nil {
 			return nil, err
 		}
+		txo := (&types.Txo{}).FromRawTxo(rawTxo, s.Indexers)
 
 		if txo.Owner != "" {
 			if owner, err := lib.NewPKHashFromScript(txo.Script); err == nil {
@@ -107,20 +108,23 @@ func Parse(ctx context.Context, tx *transaction.Transaction, indexers []types.In
 		}
 		txo.Block = block
 		idxCtx.Txos = append(idxCtx.Txos, txo)
-		for _, indexer := range indexers {
+		for _, indexer := range s.Indexers {
 			data := indexer.Parse(idxCtx, uint32(vout))
 			if data != nil {
 				txo.Data[indexer.Tag()] = data
 			}
 		}
 	}
-	for _, indexer := range indexers {
+	for _, indexer := range s.Indexers {
 		indexer.Save(idxCtx)
 	}
 
 	for _, txo := range idxCtx.Txos {
 		txo.RawData = make(map[string]*types.RawData)
 		for tag, data := range txo.Data {
+			if data.Item == nil {
+				continue
+			}
 			if data.RawData.Data, err = proto.Marshal(data.Item); err != nil {
 				panic(err)
 			}
@@ -131,8 +135,8 @@ func Parse(ctx context.Context, tx *transaction.Transaction, indexers []types.In
 	return idxCtx, nil
 }
 
-func Ingest(ctx context.Context, tx *transaction.Transaction, indexers []types.Indexer) (*types.IndexContext, error) {
-	idxCtx, err := Parse(ctx, tx, indexers)
+func (s *Store) Ingest(ctx context.Context, tx *transaction.Transaction) (*types.IndexContext, error) {
+	idxCtx, err := s.Parse(ctx, tx)
 	if err != nil {
 		return nil, err
 	}
@@ -145,10 +149,17 @@ func Ingest(ctx context.Context, tx *transaction.Transaction, indexers []types.I
 			}
 			for tag, data := range spend.Data {
 				for _, e := range data.Events {
-					pipe.ZAdd(ctx, "events", redis.Z{
+					txidHex := hex.EncodeToString(idxCtx.Txid)
+					pipe.ZAdd(ctx, "event", redis.Z{
 						Score:  1 + float64(idxCtx.Block.Height)*math.Pow(2, -32),
-						Member: e.Key(tag, hex.EncodeToString(idxCtx.Txid), spend.Outpoint.Vout, spend.Satoshis),
+						Member: e.EventKey(tag, txidHex, spend.Outpoint.Vout, spend.Satoshis),
 					})
+					if spend.Owner != "" {
+						pipe.ZAdd(ctx, "oevent", redis.Z{
+							Score:  1 + float64(idxCtx.Block.Height)*math.Pow(2, -32),
+							Member: e.OwnerKey(spend.Owner, tag, txidHex, spend.Outpoint.Vout, spend.Satoshis),
+						})
+					}
 				}
 			}
 		}
@@ -168,7 +179,7 @@ func Ingest(ctx context.Context, tx *transaction.Transaction, indexers []types.I
 				for _, e := range data.Events {
 					pipe.ZAdd(ctx, "events", redis.Z{
 						Score:  score,
-						Member: e.Key(tag, hex.EncodeToString(idxCtx.Txid), uint32(vout), txo.Satoshis),
+						Member: e.EventKey(tag, hex.EncodeToString(idxCtx.Txid), uint32(vout), txo.Satoshis),
 					})
 				}
 			}
@@ -183,5 +194,4 @@ func Ingest(ctx context.Context, tx *transaction.Transaction, indexers []types.I
 		return nil, err
 	}
 	return idxCtx, nil
-
 }

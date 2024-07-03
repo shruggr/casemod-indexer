@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -22,7 +21,7 @@ var cache *redis.Client
 
 var INDEXER string = "bsv21"
 var TOPIC string
-var VERBOSE int = 0
+var VERBOSE int = 1
 var FROM_HEIGHT uint
 var PAGE_SIZE = int64(100)
 var ctx = context.Background()
@@ -34,8 +33,8 @@ func init() {
 	log.Println("CWD:", wd)
 	godotenv.Load(fmt.Sprintf(`%s/../../.env`, wd))
 
-	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
-	flag.Parse()
+	// flag.IntVar(&VERBOSE, "v", 0, "Verbose")
+	// flag.Parse()
 
 	if opt, err := redis.ParseURL(os.Getenv("REDISDB")); err != nil {
 		panic(err)
@@ -61,9 +60,12 @@ func main() {
 	if prog == "" {
 		prog = "-"
 	}
-	indexers := []types.Indexer{
-		&ord.InscriptionIndexer{},
-		&bsv21.Bsv21Indexer{},
+
+	store := &store.Store{
+		Indexers: []types.Indexer{
+			&ord.InscriptionIndexer{},
+			&bsv21.Bsv21Indexer{},
+		},
 	}
 
 	var prevProg string
@@ -88,7 +90,7 @@ func main() {
 					panic(err)
 				} else if tx == nil {
 					log.Panicln("Missing tx", txid)
-				} else if _, err := store.Ingest(ctx, tx, indexers); err != nil {
+				} else if _, err := store.Ingest(ctx, tx); err != nil {
 					panic(err)
 				}
 			}
