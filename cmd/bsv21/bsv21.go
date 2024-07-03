@@ -61,7 +61,7 @@ func main() {
 		prog = "-"
 	}
 
-	store := &store.Store{
+	txoStore := &store.Store{
 		Indexers: []types.Indexer{
 			&ord.InscriptionIndexer{},
 			&bsv21.Bsv21Indexer{},
@@ -90,7 +90,7 @@ func main() {
 					panic(err)
 				} else if tx == nil {
 					log.Panicln("Missing tx", txid)
-				} else if _, err := store.Ingest(ctx, tx); err != nil {
+				} else if _, err := txoStore.Ingest(ctx, tx); err != nil {
 					panic(err)
 				}
 			}
