@@ -19,33 +19,24 @@ import (
 	"github.com/shruggr/casemod-indexer/db"
 )
 
-// var settled = make(chan uint32, 1000)
-var POSTGRES string
-
-// var db *pgxpool.Pool
 var rdb *redis.Client
 var cache *redis.Client
 
-var INDEXER string
+var INDEXER string = "bsv21"
 var TOPIC string
-var VERBOSE int
-var ctx = context.Background()
+var VERBOSE int = 0
+var FROM_HEIGHT uint
+var PAGE_SIZE = int64(100)
 
 const REFRESH = 15 * time.Second
-
-var tip *models.BlockHeader
-var progress uint
-var lastBlock uint32
-var lastIdx uint64
 
 func init() {
 	wd, _ := os.Getwd()
 	log.Println("CWD:", wd)
 	godotenv.Load(fmt.Sprintf(`%s/../../.env`, wd))
 
-	flag.StringVar(&INDEXER, "id", "inscriptions", "Indexer name")
 	flag.StringVar(&TOPIC, "t", "", "Junglebus SuscriptionID")
-	flag.UintVar(&progress, "s", uint(db.TRIGGER), "Start from block")
+	flag.UintVar(&FROM_HEIGHT, "s", uint(db.TRIGGER), "Start from block")
 	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
 	flag.Parse()
 
@@ -65,8 +56,14 @@ func init() {
 }
 
 func main() {
-	var err error
-	tip, err = db.JB.GetChaintip(ctx)
+	Start(context.Background(), INDEXER, TOPIC, FROM_HEIGHT, VERBOSE)
+}
+
+func Start(ctx context.Context, indexer string, topic string, progress uint, verbose int) {
+	var tip *models.BlockHeader
+	var lastBlock uint32
+	var lastIdx uint64
+	tip, err := db.JB.GetChaintip(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -79,8 +76,8 @@ func main() {
 		}
 	}()
 
-	if INDEXER != "" {
-		if logs, err := rdb.XRevRangeN(ctx, "idx:log:"+INDEXER, "+", "-", 1).Result(); err != nil {
+	if indexer != "" {
+		if logs, err := db.Rdb.XRevRangeN(ctx, "idx:log:"+indexer, "+", "-", 1).Result(); err != nil {
 			log.Panic(err)
 		} else if len(logs) > 0 {
 			parts := strings.Split(logs[0].ID, "-")
@@ -108,7 +105,7 @@ func main() {
 	var eventHandler junglebus.EventHandler
 	eventHandler = junglebus.EventHandler{
 		OnStatus: func(status *models.ControlResponse) {
-			if VERBOSE > 0 {
+			if verbose > 0 {
 				log.Printf("[STATUS]: %d %v\n", status.StatusCode, status.Message)
 			}
 			if status.StatusCode == 200 {
@@ -118,7 +115,14 @@ func main() {
 					ticker := time.NewTicker(REFRESH)
 					for range ticker.C {
 						if progress <= uint(tip.Height-5) {
-							sub = subscribe(eventHandler)
+							if sub, err = db.JB.Subscribe(
+								context.Background(),
+								topic,
+								uint64(progress),
+								eventHandler,
+							); err != nil {
+								panic(err)
+							}
 							break
 						}
 					}
@@ -133,15 +137,15 @@ func main() {
 			}
 		},
 		OnTransaction: func(txn *models.TransactionResponse) {
-			if VERBOSE > 0 {
+			if verbose > 0 {
 				log.Printf("[TX]: %d %s\n", len(txn.Transaction), txn.Id)
 			}
 			if txn.BlockHeight < lastBlock || (txn.BlockHeight == lastBlock && txn.BlockIndex <= lastIdx) {
 				return
 			}
-			if _, err := rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+			if _, err := db.Rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 				pipe.XAdd(ctx, &redis.XAddArgs{
-					Stream: "idx:log:" + INDEXER,
+					Stream: "idx:log:" + indexer,
 					Values: map[string]interface{}{
 						"txn": txn.Id,
 					},
@@ -162,7 +166,14 @@ func main() {
 	}
 
 	log.Println("Subscribing to Junglebus from block", progress)
-	sub = subscribe(eventHandler)
+	if sub, err = db.JB.Subscribe(
+		context.Background(),
+		topic,
+		uint64(progress),
+		eventHandler,
+	); err != nil {
+		panic(err)
+	}
 	defer func() {
 		sub.Unsubscribe()
 	}()
@@ -179,27 +190,4 @@ func main() {
 
 	<-make(chan struct{})
 
-}
-
-func subscribe(eventHandler junglebus.EventHandler) *junglebus.Subscription {
-	// if sub, err := db.JB.SubscribeWithQueue(
-	// 	context.Background(),
-	// 	TOPIC,
-	// 	uint64(progress),
-	// 	0,
-	// 	eventHandler,
-	// 	&junglebus.SubscribeOptions{
-	// 		QueueSize: 100000,
-	// 		LiteMode:  true,
-	// 	},
-	if sub, err := db.JB.Subscribe(
-		context.Background(),
-		TOPIC,
-		uint64(progress),
-		eventHandler,
-	); err != nil {
-		panic(err)
-	} else {
-		return sub
-	}
 }

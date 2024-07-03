@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
-	"github.com/bitcoin-sv/go-sdk/transaction"
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"github.com/shruggr/casemod-indexer/db"
@@ -17,16 +17,13 @@ import (
 	"github.com/shruggr/casemod-indexer/types"
 )
 
-// var settled = make(chan uint32, 1000)
-var POSTGRES string
-
-// var db *pgxpool.Pool
 var rdb *redis.Client
 var cache *redis.Client
 
 var INDEXER string = "bsv21"
 var TOPIC string
 var VERBOSE int = 0
+var FROM_HEIGHT uint
 var PAGE_SIZE = int64(100)
 var ctx = context.Background()
 
@@ -37,9 +34,8 @@ func init() {
 	log.Println("CWD:", wd)
 	godotenv.Load(fmt.Sprintf(`%s/../../.env`, wd))
 
-	// flag.StringVar(&INDEXER, "id", "inscriptions", "Indexer name")
-	// flag.IntVar(&VERBOSE, "v", 0, "Verbose")
-	// flag.Parse()
+	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
+	flag.Parse()
 
 	rdb = redis.NewClient(&redis.Options{
 		Addr:     os.Getenv("REDISDB"),
@@ -56,16 +52,8 @@ func init() {
 	db.Initialize(rdb, cache)
 }
 
-type TxProgress struct {
-	Txid     string
-	Tx       *transaction.Transaction
-	Parents  map[string]struct{}
-	Children map[string]struct{}
-}
-
-var prevProg string
-
 func main() {
+	// go listener.Start(ctx, INDEXER, TOPIC, FROM_HEIGHT, VERBOSE)
 	prog, err := rdb.HGet(ctx, "idx:prog", INDEXER).Result()
 	if err != nil && err != redis.Nil {
 		panic(err)
@@ -78,6 +66,7 @@ func main() {
 		&bsv21.Bsv21Indexer{},
 	}
 
+	var prevProg string
 	for {
 		if prevProg == prog {
 			log.Println("Waiting for new txns")
@@ -85,7 +74,9 @@ func main() {
 			continue
 		}
 		prevProg = prog
-		log.Println("Progress", prog)
+		if VERBOSE > 0 {
+			log.Println("Progress", prog)
+		}
 		if stream, err := rdb.XRangeN(ctx, "idx:log:"+INDEXER, prog, "+", PAGE_SIZE).Result(); err != nil {
 			panic(err)
 		} else {

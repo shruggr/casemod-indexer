@@ -2,8 +2,8 @@ const fs = require('fs');
 
 const env = {
     JUNGLEBUS: "https://junglebus.gorillapool.io",
-    REDISDB: "127.0.0.1:6379",
-    REDISCACHE: "127.0.0.1:6379",
+    REDISDB: "127.0.0.1:6666",
+    REDISCACHE: "127.0.0.1:6666",
     ARC: "https://arc.gorillapool.io",
 }
 
@@ -28,14 +28,9 @@ const env = {
 module.exports = {
     apps: [
         {
-            name: "listener",
-            script: "cmd/listener/listener",
-            args: "-id=bsv21 -t=22826aa9edbd03832bd1024866dab85d6abeade94eb011e5a3c3a59f5abdbe26 -s=811302 -v=0",
-            env,
-        }, {
             name: "index",
             script: "cmd/bsv21/bsv21",
-            args: "",
+            args: "-t=22826aa9edbd03832bd1024866dab85d6abeade94eb011e5a3c3a59f5abdbe26 -s=811302 -v=0",
             env,
         }    
     ]
