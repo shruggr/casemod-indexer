@@ -22,7 +22,7 @@ import (
 var rdb *redis.Client
 var cache *redis.Client
 
-var INDEXER string = "bsv21"
+var INDEXER string
 var TOPIC string
 var VERBOSE int = 0
 var FROM_HEIGHT uint
@@ -35,6 +35,7 @@ func init() {
 	log.Println("CWD:", wd)
 	godotenv.Load(fmt.Sprintf(`%s/../../.env`, wd))
 
+	flag.StringVar(&INDEXER, "i", "", "Indexer key")
 	flag.StringVar(&TOPIC, "t", "", "Junglebus SuscriptionID")
 	flag.UintVar(&FROM_HEIGHT, "s", uint(db.TRIGGER), "Start from block")
 	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
