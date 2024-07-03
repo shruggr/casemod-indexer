@@ -72,7 +72,7 @@ func init() {
 	db.Initialize(rdb, cache)
 }
 
-// @title BSV20/21 Fungibles API
+// @title BSV21 API
 // @version 1.0
 // @description This is a sample server server.
 // @schemes http
@@ -81,6 +81,9 @@ func main() {
 	// flag.IntVar(&PORT, "p", 8082, "Port to listen on")
 	// flag.Parse()
 	PORT := os.Getenv("PORT")
+	if PORT == "" {
+		PORT = "8082"
+	}
 
 	app := fiber.New()
 	app.Use(recover.New())
@@ -129,6 +132,25 @@ func main() {
 			return c.JSON(keys)
 		}
 	})
+
+	app.Get("/v1/:indexer/flush", func(c *fiber.Ctx) error {
+		indexer := c.Params("indexer")
+		if indexer == "" {
+			return &fiber.Error{
+				Code:    fiber.StatusBadRequest,
+				Message: "Invalid Parameters",
+			}
+		}
+		if err := rdb.HDel(c.Context(), "idx:prog", indexer).Err(); err != nil {
+			return &fiber.Error{
+				Code:    fiber.StatusInternalServerError,
+				Message: err.Error(),
+			}
+		} else {
+			return c.SendStatus(fiber.StatusOK)
+		}
+	})
+
 	// app.Get("/v1/tokens", func(c *fiber.Ctx) error {
 	// 	limit := c.QueryInt("limit", 100)
 	// 	offset := c.QueryInt("offset", 0)
@@ -505,7 +527,7 @@ func main() {
 
 	// })
 	log.Println("Listening on", PORT)
-	app.Listen(fmt.Sprintf(":%d", PORT))
+	app.Listen(fmt.Sprintf(":%s", PORT))
 }
 
 // HealthCheck godoc
