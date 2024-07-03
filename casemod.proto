@@ -24,27 +24,20 @@ message Event{
     string value = 2;
 }
 
-message IndexData {
+message RawData {
+    string tag = 1;
     bytes data = 2;
     repeated Event events = 3;
     repeated Outpoint deps = 4;
 }
 
-message Txo {
+message RawTxo {
     Outpoint outpoint = 1;
-    bytes script = 2;
-    uint64 satoshis = 3;
+    uint64 satoshis = 2;
+    bytes script = 3;
     Block block = 4;
     optional Spend spend = 5;
-    map<string, IndexData> data = 6;
-    bytes owner = 7;
+    map<string, RawData> rawData = 6;
+    string owner = 7;
     repeated string events = 8;
-}
-
-message IndexContext {
-    bytes rawtx = 1;
-    bytes txid = 2;
-    Block block = 3;
-    repeated Txo spends = 4;
-    repeated Txo txos = 5;
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/bitcoin-sv/go-sdk/script"
 	"github.com/shruggr/casemod-indexer/lib"
 	"github.com/shruggr/casemod-indexer/types"
-	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 var AsciiRegexp = regexp.MustCompile(`^[[:ascii:]]*$`)
@@ -25,13 +25,14 @@ func (i *InscriptionIndexer) Tag() string {
 
 func (i *InscriptionIndexer) Save(idxCtx *types.IndexContext) {}
 
-func (i *InscriptionIndexer) Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
+func (ii *InscriptionIndexer) Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
 	txo := idxCtx.Txos[vout]
+	scr := idxCtx.Tx.Outputs[vout].LockingScript
 	for i := 0; i < len(txo.Script); {
 		startI := i
-		if op, err := lib.ReadOp(txo.Script, &i); err != nil {
+		if op, err := scr.ReadOp(&i); err != nil {
 			break
-		} else if op.OpCode == script.OpDATA3 && i > 2 &&
+		} else if op.Op == script.OpDATA3 && i > 2 &&
 			bytes.Equal(op.Data, []byte("ord")) &&
 			txo.Script[startI-2] == 0 &&
 			txo.Script[startI-1] == script.OpIF {
@@ -41,40 +42,42 @@ func (i *InscriptionIndexer) Parse(idxCtx *types.IndexContext, vout uint32) *typ
 	return nil
 }
 
-// func (i *InscriptionIndexer) UnmarshalData(target interface{}) error {
-
-// }
-
-func ParseInscription(txCtx *types.IndexContext, vout uint32, s []byte, fromPos *int) *types.IndexData {
-	txo := txCtx.Txos[vout]
-	pos := *fromPos
-	idxData := &types.IndexData{
-		Events: []*types.Event{},
-		Deps:   []*types.Outpoint{},
+func (i *InscriptionIndexer) UnmarshalData(raw []byte) (protoreflect.ProtoMessage, error) {
+	ins := &Inscription{}
+	if err := json.Unmarshal(raw, ins); err != nil {
+		return nil, err
+	} else {
+		return ins, nil
 	}
+}
 
+func ParseInscription(idxCtx *types.IndexContext, vout uint32, s []byte, fromPos *int) *types.IndexData {
+	txo := idxCtx.Txos[vout]
+	scr := idxCtx.Tx.Outputs[vout].LockingScript
+	pos := *fromPos
 	ins := &Inscription{
 		File: &File{},
 	}
+	idxData := &types.IndexData{Item: ins}
 
 ordLoop:
 	for {
-		op, err := lib.ReadOp(s, &pos)
-		if err != nil || op.OpCode > script.Op16 {
+		op, err := scr.ReadOp(&pos)
+		if err != nil || op.Op > script.Op16 {
 			return nil
 		}
 
-		op2, err := lib.ReadOp(s, &pos)
-		if err != nil || op2.OpCode > script.Op16 {
+		op2, err := scr.ReadOp(&pos)
+		if err != nil || op2.Op > script.Op16 {
 			return nil
 		}
 
 		var field int
-		if op.OpCode > script.OpPUSHDATA4 && op.OpCode <= script.Op16 {
-			field = int(op.OpCode) - 80
-		} else if op.Len == 1 {
+		if op.Op > script.OpPUSHDATA4 && op.Op <= script.Op16 {
+			field = int(op.Op) - 80
+		} else if len(op.Data) == 1 {
 			field = int(op.Data[0])
-		} else if op.Len > 1 {
+		} else if len(op.Data) > 1 {
 			ins.Fields = append(ins.Fields, &Field{
 				Id:    op.Data,
 				Value: op2.Data,
@@ -95,14 +98,12 @@ ordLoop:
 				})
 			}
 		case 3:
-			if parent, err := types.NewOutpointFromBytes(op2.Data); err == nil {
-				if slices.ContainsFunc(txCtx.Spends, func(spend *types.Txo) bool {
+			if parent := types.NewOutpointFromBytes(op2.Data); err == nil {
+				if slices.ContainsFunc(idxCtx.Spends, func(spend *types.Txo) bool {
 					if o, ok := spend.Data["origin"]; ok {
-						origin := &Origin{}
-						if err := proto.Unmarshal(o.Data, origin); err != nil {
-							panic(err)
+						if origin, ok := o.Item.(*Origin); ok {
+							return bytes.Equal(origin.Outpoint, parent.Bytes())
 						}
-						return bytes.Equal(spend.Outpoint.Bytes(), parent.Bytes())
 					}
 					return false
 				}) {
@@ -120,19 +121,19 @@ ordLoop:
 			})
 		}
 	}
-	op, err := lib.ReadOp(s, &pos)
-	if err != nil || op.OpCode != script.OpENDIF {
+	op, err := scr.ReadOp(&pos)
+	if err != nil || op.Op != script.OpENDIF {
 		return nil
 	}
 	if len(txo.Owner) == 0 {
 		if len(s) >= pos+25 && script.NewFromBytes(s[pos:pos+25]).IsP2PKH() {
 			pkhash := lib.PKHash(s[pos+3 : pos+23])
-			txo.Owner = pkhash
+			txo.Owner, _ = pkhash.Address()
 		} else if len(s) >= pos+26 &&
 			s[pos] == script.OpCODESEPARATOR &&
 			script.NewFromBytes(s[pos+1:pos+26]).IsP2PKH() {
 			pkhash := lib.PKHash(s[pos+4 : pos+24])
-			txo.Owner = pkhash
+			txo.Owner, _ = pkhash.Address()
 		}
 	}
 	*fromPos = pos
@@ -169,6 +170,5 @@ ordLoop:
 			}
 		}
 	}
-	idxData.Data, _ = proto.Marshal(ins)
 	return idxData
 }

@@ -139,14 +139,18 @@ func main() {
 			if txn.BlockHeight < lastBlock || (txn.BlockHeight == lastBlock && txn.BlockIndex <= lastIdx) {
 				return
 			}
-			if err := rdb.XAdd(ctx, &redis.XAddArgs{
-				Stream: "idx:log:" + INDEXER,
-				Values: map[string]interface{}{
-					"txn": txn.Id,
-				},
-				ID: fmt.Sprintf("%d-%d", txn.BlockHeight, txn.BlockIndex),
-			}).Err(); err != nil {
-				log.Panic(err)
+			if _, err := rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+				pipe.XAdd(ctx, &redis.XAddArgs{
+					Stream: "idx:log:" + INDEXER,
+					Values: map[string]interface{}{
+						"txn": txn.Id,
+					},
+					ID: fmt.Sprintf("%d-%d", txn.BlockHeight, txn.BlockIndex),
+				})
+				pipe.HSet(ctx, "tx:"+txn.Id, "raw", txn.Transaction)
+				return nil
+			}); err != nil {
+				log.Println(err)
 			}
 			lastBlock = txn.BlockHeight
 			lastIdx = txn.BlockIndex
@@ -178,16 +182,21 @@ func main() {
 }
 
 func subscribe(eventHandler junglebus.EventHandler) *junglebus.Subscription {
-	if sub, err := db.JB.SubscribeWithQueue(
+	// if sub, err := db.JB.SubscribeWithQueue(
+	// 	context.Background(),
+	// 	TOPIC,
+	// 	uint64(progress),
+	// 	0,
+	// 	eventHandler,
+	// 	&junglebus.SubscribeOptions{
+	// 		QueueSize: 100000,
+	// 		LiteMode:  true,
+	// 	},
+	if sub, err := db.JB.Subscribe(
 		context.Background(),
 		TOPIC,
 		uint64(progress),
-		0,
 		eventHandler,
-		&junglebus.SubscribeOptions{
-			QueueSize: 100000,
-			LiteMode:  true,
-		},
 	); err != nil {
 		panic(err)
 	} else {

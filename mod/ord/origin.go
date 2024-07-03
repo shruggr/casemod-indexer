@@ -6,10 +6,10 @@ import (
 	"log"
 
 	"github.com/shruggr/casemod-indexer/db"
-	"github.com/shruggr/casemod-indexer/mod"
 	store "github.com/shruggr/casemod-indexer/txostore"
 	"github.com/shruggr/casemod-indexer/types"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 const MAX_DEPTH = 1024
@@ -22,18 +22,6 @@ func (o *OriginIndexer) Tag() string {
 	return TAG
 }
 
-// func (o *OriginIndexer) UnmarshalData(txo *types.Txo) (*Origin, error) {
-// 	origin := &Origin{}
-// 	data := txo.IndexData(o.Tag())
-// 	if data == nil {
-// 		return nil, nil
-// 	} else if err := proto.Unmarshal(data.Data, origin); err != nil {
-// 		return nil, err
-// 	} else {
-// 		return origin, nil
-// 	}
-// }
-
 func (o *OriginIndexer) Parse(txCtx *types.IndexContext, vout uint32) *types.IndexData {
 	txo := txCtx.Txos[vout]
 	if txo.Satoshis != 1 {
@@ -45,15 +33,20 @@ func (o *OriginIndexer) Parse(txCtx *types.IndexContext, vout uint32) *types.Ind
 		return nil
 	}
 	idxData := &types.IndexData{}
-	var err error
-	if idxData.Data, err = proto.Marshal(origin); err != nil {
-		panic(err)
-	}
 	idxData.Events = append(idxData.Events, &types.Event{
 		Id:    "outpoint",
 		Value: txo.Outpoint.JsonString(),
 	})
 	return idxData
+}
+
+func (o *OriginIndexer) UnmarshalData(raw []byte) (protoreflect.ProtoMessage, error) {
+	origin := &Origin{}
+	if err := proto.Unmarshal(raw, origin); err != nil {
+		return nil, err
+	} else {
+		return origin, nil
+	}
 }
 
 func (o *OriginIndexer) Save(txCtx *types.IndexContext) {}
@@ -68,18 +61,15 @@ func calcOrigin(txCtx *types.IndexContext, vout uint32, depth uint32) (origin *O
 	}
 	txo := txCtx.Txos[vout]
 	inSat := uint64(0)
-	var err error
 	for _, spend := range txCtx.Spends {
 		if inSat == outSat && spend.Satoshis == 1 {
 			if o, ok := spend.Data[TAG]; ok {
-				origin = &Origin{}
-				if err = proto.Unmarshal(o.Data, origin); err != nil {
-					log.Panic(err)
+				if origin, ok = o.Item.(*Origin); ok {
+					origin.Nonce++
 				}
-				origin.Nonce++
-			} else if tx, err := db.LoadTx(hex.EncodeToString(spend.Outpoint.Txid)); err != nil {
+			} else if tx, err := db.LoadTx(context.Background(), hex.EncodeToString(spend.Outpoint.Txid)); err != nil {
 				log.Panic(err)
-			} else if spendCtx, err := store.Parse(context.Background(), tx, []mod.Indexer{
+			} else if spendCtx, err := store.Parse(context.Background(), tx, []types.Indexer{
 				&InscriptionIndexer{},
 				// &bitcom.Bitcom{},
 				// &bitcom.Map{},

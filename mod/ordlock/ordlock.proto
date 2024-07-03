@@ -1,0 +1,11 @@
+syntax = "proto3";
+package ord;
+option go_package = "mod/ordlock";
+
+
+message Listing {
+	uint64 price = 1;
+	bytes payOut = 2;
+	double pricePer = 3;
+	bool sale = 4;
+}
