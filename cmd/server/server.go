@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -79,8 +78,9 @@ func init() {
 // @schemes http
 func main() {
 	// flag.IntVar(&CONCURRENCY, "c", 64, "Concurrency Limit")
-	flag.IntVar(&PORT, "p", 8082, "Port to listen on")
-	flag.Parse()
+	// flag.IntVar(&PORT, "p", 8082, "Port to listen on")
+	// flag.Parse()
+	PORT := os.Getenv("PORT")
 
 	app := fiber.New()
 	app.Use(recover.New())
