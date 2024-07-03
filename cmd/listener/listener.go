@@ -35,23 +35,23 @@ func init() {
 	log.Println("CWD:", wd)
 	godotenv.Load(fmt.Sprintf(`%s/../../.env`, wd))
 
-	flag.StringVar(&INDEXER, "i", "", "Indexer key")
+	flag.StringVar(&INDEXER, "id", "", "Indexer key")
 	flag.StringVar(&TOPIC, "t", "", "Junglebus SuscriptionID")
 	flag.UintVar(&FROM_HEIGHT, "s", uint(db.TRIGGER), "Start from block")
 	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
 	flag.Parse()
 
-	rdb = redis.NewClient(&redis.Options{
-		Addr:     os.Getenv("REDISDB"),
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	if opt, err := redis.ParseURL(os.Getenv("REDISDB")); err != nil {
+		panic(err)
+	} else {
+		rdb = redis.NewClient(opt)
+	}
 
-	cache = redis.NewClient(&redis.Options{
-		Addr:     os.Getenv("REDISCAHCE"),
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	if opt, err := redis.ParseURL(os.Getenv("REDISCACHE")); err != nil {
+		panic(err)
+	} else {
+		cache = redis.NewClient(opt)
+	}
 
 	db.Initialize(rdb, cache)
 }
