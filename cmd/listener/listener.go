@@ -104,6 +104,7 @@ func Start(ctx context.Context, indexer string, topic string, progress uint, ver
 
 	var sub *junglebus.Subscription
 	var eventHandler junglebus.EventHandler
+	queueKey := fmt.Sprintf("queue:%s", indexer)
 	eventHandler = junglebus.EventHandler{
 		OnStatus: func(status *models.ControlResponse) {
 			if verbose > 0 {
@@ -141,25 +142,29 @@ func Start(ctx context.Context, indexer string, topic string, progress uint, ver
 			if verbose > 0 {
 				log.Printf("[TX]: %d %s\n", len(txn.Transaction), txn.Id)
 			}
-			if txn.BlockHeight < lastBlock || (txn.BlockHeight == lastBlock && txn.BlockIndex <= lastIdx) {
-				return
-			}
-			if _, err := db.Rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
-				pipe.XAdd(ctx, &redis.XAddArgs{
-					Stream: "idx:log:" + indexer,
-					Values: map[string]interface{}{
-						"txn": txn.Id,
-					},
-					ID: fmt.Sprintf("%d-%d", txn.BlockHeight, txn.BlockIndex),
-				})
-				pipe.HSet(ctx, "tx:"+txn.Id, "raw", txn.Transaction)
-				return nil
-			}); err != nil {
-				log.Println(err)
+			scoreStr := fmt.Sprintf("%07d.%11d", txn.BlockHeight, txn.BlockIndex)
+			if score, err := strconv.ParseFloat(scoreStr, 64); err != nil {
+				log.Panicln(err)
+			} else if err := rdb.ZAdd(ctx, queueKey, redis.Z{
+				Member: txn.Id,
+				Score:  score,
+			}).Err(); err != nil {
+				log.Panicln(err)
 			}
 			lastBlock = txn.BlockHeight
 			lastIdx = txn.BlockIndex
 			txCount++
+		},
+		OnMempool: func(txn *models.TransactionResponse) {
+			if verbose > 0 {
+				log.Printf("[MEM]: %d %s\n", len(txn.Transaction), txn.Id)
+			}
+			if err := rdb.ZAdd(ctx, queueKey, redis.Z{
+				Member: txn.Id,
+				Score:  float64(time.Now().Unix()),
+			}).Err(); err != nil {
+				log.Panicln(err)
+			}
 		},
 		OnError: func(err error) {
 			log.Panicf("[ERROR]: %v\n", err)
@@ -167,11 +172,16 @@ func Start(ctx context.Context, indexer string, topic string, progress uint, ver
 	}
 
 	log.Println("Subscribing to Junglebus from block", progress)
-	if sub, err = db.JB.Subscribe(
+	if sub, err = db.JB.SubscribeWithQueue(
 		context.Background(),
 		topic,
 		uint64(progress),
+		0,
 		eventHandler,
+		&junglebus.SubscribeOptions{
+			QueueSize: 10000,
+			LiteMode:  true,
+		},
 	); err != nil {
 		panic(err)
 	}

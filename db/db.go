@@ -108,3 +108,45 @@ func LoadProof(ctx context.Context, txid string) (*transaction.MerklePath, error
 	}
 	return nil, nil
 }
+
+type TxoSearch struct {
+	Indexer *string `json:"indexer"`
+	Tag     *string `json:"tag"`
+	Id      *string `json:"id"`
+	Value   *string `json:"value"`
+	Owner   *string `json:"owner"`
+	Spent   *bool   `json:"spent"`
+	Cursor  uint64  `json:"cursor"`
+}
+
+// func (search *TxoSearch) Search(ctx context.Context) ([]*Outpoint, error) {
+// 	var key string = "events"
+// 	var pattern string
+// 	if search.Owner != nil {
+// 		key = "oevents"
+// 		pattern = *search.Owner + ":"
+// 	}
+// 	if search.Indexer != nil {
+// 		pattern = pattern + *search.Indexer + ":"
+// 		if search.Tag != nil {
+// 			pattern = pattern + *search.Tag
+// 			if search.Id != nil {
+// 				pattern = pattern + ":" + *search.Id
+// 				if search.Value != nil {
+// 					pattern = pattern + ":" + *search.Value
+// 				}
+// 			}
+// 		}
+// 	}
+// 	start := float64(0)
+// 	end := float64(2)
+// 	if search.Spent != nil && *search.Spent {
+// 		start = 1
+// 	} else if search.Spent != nil && !*search.Spent {
+// 		end = 1
+// 	}
+// 	Rdb.ZRangeByScore(ctx, key, &redis.ZRangeBy{})
+// 	// if keys, _, err := Rdb.ZScan(ctx, key, start, pattern+":*", 100).Result(); err != nil {
+
+// 	// }
+// }

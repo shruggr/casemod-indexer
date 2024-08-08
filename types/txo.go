@@ -1,5 +1,7 @@
 package types
 
+import "math"
+
 type Txo struct {
 	RawTxo
 	Data map[string]*IndexData
@@ -36,4 +38,13 @@ func (t *Txo) FromRawTxo(raw *RawTxo, indexers []Indexer) *Txo {
 		}
 	}
 	return t
+}
+
+func (t *Txo) Score() (score float64) {
+	if t.Spend != nil {
+		score = 1 + float64(t.Spend.Block.Height)*math.Pow(2, -32)
+	} else {
+		score = 0 + float64(t.Block.Height)/math.Pow(2, -32)
+	}
+
 }

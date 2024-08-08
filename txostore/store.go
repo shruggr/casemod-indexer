@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
-	"math"
+	"fmt"
 	"slices"
 	"time"
 
@@ -62,7 +62,7 @@ func (s *Store) Parse(ctx context.Context, tx *transaction.Transaction) (*types.
 				Vout: input.SourceTxOutIndex,
 			}
 			rawTxo := &types.RawTxo{}
-			if t, err := db.Rdb.HGet(ctx, "to:"+outpoint.JsonString(), "txo").Bytes(); err == redis.Nil {
+			if t, err := db.Rdb.HGet(ctx, "txo:"+outpoint.JsonString(), "txo").Bytes(); err == redis.Nil {
 				rawTxo.Outpoint = outpoint
 				rawTxo.Satoshis = *input.PreviousTxSatoshis()
 				rawTxo.Script = *input.PreviousTxScript()
@@ -90,7 +90,7 @@ func (s *Store) Parse(ctx context.Context, tx *transaction.Transaction) (*types.
 		// 	Data: make(map[string]*types.IndexData),
 		// }
 		rawTxo := &types.RawTxo{}
-		if t, err := db.Rdb.HGet(ctx, "to:"+outpoint.JsonString(), "txo").Bytes(); err == redis.Nil {
+		if t, err := db.Rdb.HGet(ctx, "txo:"+outpoint.JsonString(), "txo").Bytes(); err == redis.Nil {
 			rawTxo.Outpoint = outpoint
 			rawTxo.Satoshis = output.Satoshis
 			rawTxo.Script = *output.LockingScript
@@ -142,51 +142,51 @@ func (s *Store) Ingest(ctx context.Context, tx *transaction.Transaction) (*types
 	}
 	if _, err = db.Rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
 		for _, spend := range idxCtx.Spends {
+			score := spend.Score()
 			if s, err := proto.Marshal(spend.Spend); err != nil {
 				panic(err)
-			} else if err := pipe.HSet(ctx, "to:"+spend.Outpoint.JsonString(), "spend", s).Err(); err != nil {
+			} else if err := pipe.HSet(ctx, "txo:"+spend.Outpoint.JsonString(), "spend", s).Err(); err != nil {
 				panic(err)
 			}
 			for tag, data := range spend.Data {
 				for _, e := range data.Events {
-					txidHex := hex.EncodeToString(idxCtx.Txid)
-					pipe.ZAdd(ctx, "event", redis.Z{
-						Score:  1 + float64(idxCtx.Block.Height)*math.Pow(2, -32),
-						Member: e.EventKey(tag, txidHex, spend.Outpoint.Vout, spend.Satoshis),
+					pipe.ZAdd(ctx, fmt.Sprintf("evt:%s:%s:%s", tag, e.Id, e.Value), redis.Z{
+						Score:  score,
+						Member: spend.Outpoint.JsonString(),
 					})
 					if spend.Owner != "" {
-						pipe.ZAdd(ctx, "oevent", redis.Z{
-							Score:  1 + float64(idxCtx.Block.Height)*math.Pow(2, -32),
-							Member: e.OwnerKey(spend.Owner, tag, txidHex, spend.Outpoint.Vout, spend.Satoshis),
+						pipe.ZAdd(ctx, fmt.Sprintf("oev:%s:%s:%s:%s", spend.Owner, tag, e.Id, e.Value), redis.Z{
+							Score:  score,
+							Member: spend.Outpoint.JsonString(),
 						})
 					}
 				}
 			}
 		}
 
-		for vout, txo := range idxCtx.Txos {
-			var score float64
-			if txo.Spend != nil {
-				score = 1 + float64(idxCtx.Block.Height)*math.Pow(2, -32)
-			} else {
-				score = 0 + float64(idxCtx.Block.Height)/math.Pow(2, -32)
-			}
-
-			for _, event := range txo.Events {
-				pipe.ZRem(ctx, "events", event)
-			}
+		for _, txo := range idxCtx.Txos {
+			score := txo.Score()
 			for tag, data := range txo.Data {
+				for _, dep := range data.Deps {
+					pipe.SAdd(ctx, fmt.Sprintf("dep:%s:%s", txo.Outpoint.JsonString(), tag), dep.JsonString())
+				}
 				for _, e := range data.Events {
-					pipe.ZAdd(ctx, "events", redis.Z{
+					pipe.ZAdd(ctx, fmt.Sprintf("evt:%s:%s:%s", tag, e.Id, e.Value), redis.Z{
 						Score:  score,
-						Member: e.EventKey(tag, hex.EncodeToString(idxCtx.Txid), uint32(vout), txo.Satoshis),
+						Member: txo.Outpoint.JsonString(),
 					})
+					if txo.Owner != "" {
+						pipe.ZAdd(ctx, fmt.Sprintf("oev:%s:%s:%s:%s", txo.Owner, tag, e.Id, e.Value), redis.Z{
+							Score:  score,
+							Member: txo.Outpoint.JsonString(),
+						})
+					}
 				}
 			}
 			if t, err := proto.Marshal(txo); err != nil {
 				return err
 			} else {
-				pipe.HSet(ctx, "to:"+txo.Outpoint.JsonString(), "txo", t).Err()
+				pipe.HSet(ctx, "txo:"+txo.Outpoint.JsonString(), "txo", t).Err()
 			}
 		}
 		return nil
