@@ -10,6 +10,11 @@ import (
 	"github.com/bitcoin-sv/go-sdk/util"
 )
 
+type Outpoint struct {
+	Txid util.ByteString `json:"txid"`
+	Vout uint32          `json:"vout"`
+}
+
 func NewOutpointFromString(s string) (o *Outpoint, err error) {
 	if len(s) < 66 {
 		return nil, fmt.Errorf("invalid-string")
@@ -49,12 +54,12 @@ func (o *Outpoint) Bytes() []byte {
 	return b
 }
 
-func (o *Outpoint) JsonString() string {
+func (o *Outpoint) String() string {
 	return fmt.Sprintf("%x_%d", o.Txid, o.Vout)
 }
 
 func (o *Outpoint) MarshalJSON() (bytes []byte, err error) {
-	return json.Marshal(o.JsonString())
+	return json.Marshal(o.String())
 }
 
 func (o *Outpoint) UnmarshalJSON(data []byte) error {

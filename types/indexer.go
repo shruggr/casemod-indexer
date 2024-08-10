@@ -1,10 +1,7 @@
 package types
 
 import (
-	"fmt"
-
 	"github.com/bitcoin-sv/go-sdk/transaction"
-	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type IndexContext struct {
@@ -16,22 +13,29 @@ type IndexContext struct {
 	Txos   []*Txo `json:"txos"`
 }
 
+type Event struct {
+	Id    string `json:"id"`
+	Value string `json:"value"`
+}
+
 type IndexData struct {
-	RawData
-	Item protoreflect.ProtoMessage
+	Tag    string      `json:"tag"`
+	Data   []byte      `json:"data"`
+	Events []*Event    `json:"events"`
+	Deps   []*Outpoint `json:"deps"`
+	Item   interface{} `json:"item" msgpack:"-"`
 }
 
 type Indexer interface {
 	Tag() string
 	Parse(*IndexContext, uint32) *IndexData
 	Save(*IndexContext)
-	UnmarshalData(raw []byte) (protoreflect.ProtoMessage, error)
+	Score(*IndexContext, uint32) float64
 }
 
-func (e *Event) EventKey(tag string, txid string, vout uint32, satoshis uint64) string {
-	return fmt.Sprintf("%s:%s:%s:%s:%d:%d", tag, e.Id, e.Value, txid, vout, satoshis)
-}
+type BaseIndexer struct{}
 
-func (e *Event) OwnerKey(owner string, tag string, txid string, vout uint32, satoshis uint64) string {
-	return fmt.Sprintf("%s:%s:%s:%s:%s:%d:%d", owner, tag, e.Id, e.Value, txid, vout, satoshis)
+func (b *BaseIndexer) Score(idxCtx *IndexContext, vout uint32) float64 {
+	txo := idxCtx.Txos[vout]
+	return txo.Score()
 }

@@ -1,4 +1,4 @@
-package lib
+package types
 
 import (
 	"encoding/json"
@@ -8,26 +8,22 @@ import (
 
 type PKHash []byte
 
-func (p *PKHash) Address() (string, error) {
-	add, err := script.NewAddressFromPublicKeyHash(*p, true)
-	if err != nil {
-		return "", err
-	}
-	return add.AddressString, nil
+func (p *PKHash) Address() string {
+	add, _ := script.NewAddressFromPublicKeyHash(*p, true)
+	return add.AddressString
 }
 
-// MarshalJSON serializes ByteArray to hex
+func (p *PKHash) String() string {
+	return p.Address()
+}
+
 func (p PKHash) MarshalJSON() ([]byte, error) {
-	add, err := p.Address()
-	if err != nil {
-		return nil, err
-	}
+	add := p.Address()
 	return json.Marshal(add)
 }
 
 func NewPKHashFromAddress(a string) (p *PKHash, err error) {
 	add, err := script.NewAddressFromString(a)
-	// script, err := script.NewP2PKHFromAddress(a)
 	if err != nil {
 		return
 	}

@@ -11,29 +11,23 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"github.com/shruggr/casemod-indexer/db"
-	"github.com/shruggr/casemod-indexer/listener"
 )
 
 var rdb *redis.Client
 
 // var cache *redis.Client
 
-var INDEXER string
-var TOPIC string
 var VERBOSE int = 0
-var FROM_HEIGHT uint
-var PAGE_SIZE = int64(100)
+var PAGE_SIZE = uint(10000)
 
-const REFRESH = 15 * time.Second
+const REFRESH = 30 * time.Second
+
+var ctx = context.Background()
 
 func init() {
 	wd, _ := os.Getwd()
 	log.Println("CWD:", wd)
 	godotenv.Load(fmt.Sprintf(`%s/../../.env`, wd))
-
-	flag.StringVar(&INDEXER, "id", "", "Indexer key")
-	flag.StringVar(&TOPIC, "t", "", "Junglebus SuscriptionID")
-	flag.UintVar(&FROM_HEIGHT, "s", uint(db.TRIGGER), "Start from block")
 	flag.IntVar(&VERBOSE, "v", 0, "Verbose")
 	flag.Parse()
 
@@ -53,10 +47,34 @@ func init() {
 }
 
 func main() {
-	listener.Start(context.Background(),
-		INDEXER,
-		TOPIC,
-		FROM_HEIGHT,
-		VERBOSE,
-	)
+	if err := syncBlocks(); err != nil {
+		log.Panicln(err)
+	}
+}
+
+func syncBlocks() (err error) {
+	fromHeight := uint32(1)
+	if blockIds, err := db.Rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{
+		Key:     db.BlockIdKey,
+		ByScore: true,
+		Rev:     true,
+		Count:   1,
+		Stop:    50000000,
+	}).Result(); err != nil {
+		log.Panicln(err)
+	} else if len(blockIds) > 0 {
+		fromHeight = uint32(blockIds[0].Score) - 5
+	}
+
+	for {
+		height, err := db.SyncBlocks(ctx, fromHeight, PAGE_SIZE)
+		if err != nil {
+			return err
+		}
+		if height-fromHeight < uint32(PAGE_SIZE) {
+			break
+		}
+		fromHeight = height
+	}
+	return nil
 }

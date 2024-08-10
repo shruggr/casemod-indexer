@@ -7,11 +7,25 @@ import (
 
 	"github.com/shruggr/casemod-indexer/mod/ord"
 	"github.com/shruggr/casemod-indexer/types"
-	"google.golang.org/protobuf/proto"
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
-type Bsv21Indexer struct{}
+type Bsv21 struct {
+	Id       *types.Outpoint `json:"id,omitempty"`
+	Op       string          `json:"op,omitempty"`
+	Amt      uint64          `json:"amt,omitempty"`
+	Dec      uint32          `json:"dec,omitempty"`
+	Sym      string          `json:"sym,omitempty"`
+	Icon     *types.Outpoint `json:"icon,omitempty"`
+	Contract string          `json:"contract,omitempty"`
+	Status   int32           `json:"status,omitempty"`
+	Reason   string          `json:"reason,omitempty"`
+}
+
+type Bsv21Indexer struct {
+	types.BaseIndexer
+	InscrptionIndexer *ord.InscriptionIndexer
+}
 
 type Bsv21Status int32
 
@@ -27,11 +41,19 @@ func (b *Bsv21Indexer) Tag() string {
 
 func (b *Bsv21Indexer) Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
 	txo := idxCtx.Txos[vout]
-	i, ok := txo.Data["insc"]
-	if !ok {
+	var i *types.IndexData
+	if b.InscrptionIndexer != nil {
+		i = b.InscrptionIndexer.Parse(idxCtx, vout)
+	} else {
+		i = txo.Data["insc"]
+	}
+	if i == nil {
 		return nil
 	}
 	insc := i.Item.(*ord.Inscription)
+	if insc == nil {
+		return nil
+	}
 	if insc.File.Type != "application/bsv-20" {
 		return nil
 	}
@@ -40,7 +62,6 @@ func (b *Bsv21Indexer) Parse(idxCtx *types.IndexContext, vout uint32) *types.Ind
 		return nil
 	}
 	bsv21 := &Bsv21{
-		Id:       bsv21Insc["id"],
 		Op:       bsv21Insc["op"],
 		Sym:      bsv21Insc["sym"],
 		Contract: bsv21Insc["contract"],
@@ -67,18 +88,38 @@ func (b *Bsv21Indexer) Parse(idxCtx *types.IndexContext, vout uint32) *types.Ind
 			}
 		}
 
-		bsv21.Id = txo.Outpoint.JsonString()
+		bsv21.Id = txo.Outpoint
 		bsv21.Status = 1
 	case "transfer", "burn":
+		if tokenId, ok := bsv21Insc["id"]; !ok {
+			return nil
+		} else if bsv21Id, err := types.NewOutpointFromString(tokenId); err != nil {
+			log.Println("bsv21: invalid id", tokenId)
+			return nil
+		} else {
+			bsv21.Id = bsv21Id
+		}
 	default:
 		return nil
 	}
-	if len(bsv21.Id) == 0 {
+	if bsv21.Id == nil {
 		return nil
 	}
 
 	idxData := &types.IndexData{
 		Item: bsv21,
+		Events: []*types.Event{
+			{
+				Id:    "id",
+				Value: bsv21.Id.String(),
+			},
+		},
+	}
+	if bsv21.Contract != "" {
+		idxData.Events = append(idxData.Events, &types.Event{
+			Id:    "contract",
+			Value: bsv21.Contract,
+		})
 	}
 	return idxData
 }
@@ -95,14 +136,15 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 			bsv21 = b.Item.(*Bsv21)
 		}
 		if bsv21.Status == int32(Valid) {
-			if _, ok := spends[bsv21.Id]; !ok {
-				spends[bsv21.Id] = []*types.Txo{}
-				tokensIn[bsv21.Id] = []*Bsv21{}
-				balance[bsv21.Id] = 0
+			tokenId := bsv21.Id.String()
+			if _, ok := spends[tokenId]; !ok {
+				spends[tokenId] = []*types.Txo{}
+				tokensIn[tokenId] = []*Bsv21{}
+				balance[tokenId] = 0
 			}
-			spends[bsv21.Id] = append(spends[bsv21.Id], spend)
-			tokensIn[bsv21.Id] = append(tokensIn[bsv21.Id], bsv21)
-			balance[bsv21.Id] += bsv21.Amt
+			spends[tokenId] = append(spends[tokenId], spend)
+			tokensIn[tokenId] = append(tokensIn[tokenId], bsv21)
+			balance[tokenId] += bsv21.Amt
 		}
 	}
 
@@ -110,24 +152,30 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 	reasons := map[string]string{}
 	for _, txo := range idxCtx.Txos {
 		bsv21 := &Bsv21{}
-		if b, ok := txo.Data["bsv21"]; !ok {
+		var bData *types.IndexData
+		var ok bool
+		if bData, ok = txo.Data["bsv21"]; !ok {
 			continue
-		} else {
-			bsv21 = b.Item.(*Bsv21)
+		} else if bsv21, ok = bData.Item.(*Bsv21); !ok {
+			continue
 		}
+		tokenId := bsv21.Id.String()
 		if bsv21.Op != "transfer" && bsv21.Op != "burn" {
 			continue
-		} else if bal, ok := balance[bsv21.Id]; !ok || bal < bsv21.Amt {
-			reasons[bsv21.Id] = "insufficient-inputs"
+		} else if bal, ok := balance[tokenId]; !ok || bal < bsv21.Amt {
+			reasons[tokenId] = "insufficient-inputs"
 		}
 
 		var token *Bsv21
-		if tokenSpends, ok := spends[bsv21.Id]; ok {
+		if tokenSpends, ok := spends[tokenId]; ok {
+			// txids := map[string]struct{}{}
 			for i, spend := range tokenSpends {
-				txo.Data["bsv21"].Deps = append(txo.Data["bsv21"].Deps, spend.Outpoint)
-				if token == nil {
-					token = tokensIn[bsv21.Id][i]
-				}
+				bData.Deps = append(bData.Deps, spend.Outpoint)
+				// txid := spend.Outpoint.Txid.String()
+				// if _, ok := txids[txid]; !ok {
+				// 	txids[txid] = struct{}{}
+				// }
+				token = tokensIn[tokenId][i]
 			}
 		}
 		if token != nil {
@@ -135,11 +183,11 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 			bsv21.Icon = token.Icon
 			bsv21.Contract = token.Contract
 		}
-		if _, ok := tokenTxos[bsv21.Id]; !ok {
-			tokenTxos[bsv21.Id] = []*types.Txo{}
+		if _, ok := tokenTxos[tokenId]; !ok {
+			tokenTxos[tokenId] = []*types.Txo{}
 		}
-		tokenTxos[bsv21.Id] = append(tokenTxos[bsv21.Id], txo)
-		balance[bsv21.Id] -= txo.Satoshis
+		tokenTxos[tokenId] = append(tokenTxos[tokenId], txo)
+		balance[tokenId] -= txo.Satoshis
 	}
 
 	for id, txos := range tokenTxos {
@@ -157,7 +205,7 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 			} else {
 				idxData.Events = append(idxData.Events, &types.Event{
 					Id:    "id",
-					Value: bsv21.Id,
+					Value: bsv21.Id.String(),
 				})
 				if bsv21.Contract != "" {
 					idxData.Events = append(idxData.Events, &types.Event{
@@ -171,11 +219,16 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 	}
 }
 
-func (b *Bsv21Indexer) UnmarshalData(raw []byte) (protoreflect.ProtoMessage, error) {
+func (b *Bsv21Indexer) UnmarshalData(raw []byte) (any, error) {
 	bsv21 := &Bsv21{}
-	if err := proto.Unmarshal(raw, bsv21); err != nil {
+	if err := msgpack.Unmarshal(raw, bsv21); err != nil {
 		return nil, err
 	} else {
 		return bsv21, nil
 	}
+}
+
+func (b *Bsv21Indexer) MarshalData(data any) ([]byte, error) {
+	bsv21 := data.(*Bsv21)
+	return msgpack.Marshal(bsv21)
 }

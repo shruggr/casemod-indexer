@@ -8,7 +8,6 @@ import (
 	"github.com/bitcoin-sv/go-sdk/transaction"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
-	"github.com/shruggr/casemod-indexer/lib"
 	"github.com/shruggr/casemod-indexer/mod/bsv21"
 	"github.com/shruggr/casemod-indexer/types"
 )
@@ -39,7 +38,7 @@ func Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
 	if ordLockParts, err := ordLock.ParseOps(); err != nil || len(ordLockParts) == 0 {
 		return nil
 	} else {
-		pkhash := lib.PKHash(ordLockParts[0].Data)
+		pkhash := types.PKHash(ordLockParts[0].Data)
 		payOutput := &transaction.TransactionOutput{}
 		listing := &Listing{
 			Price:  payOutput.Satoshis,
@@ -52,14 +51,12 @@ func Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
 		if _, err = payOutput.ReadFrom(bytes.NewReader(ordLockParts[1].Data)); err != nil {
 			return nil
 		}
-		txo.Owner, _ = pkhash.Address()
+		txo.Owner = &pkhash
 		return &types.IndexData{
-			RawData: types.RawData{
-				Events: []*types.Event{
-					{
-						Id:    "listing",
-						Value: txo.Outpoint.JsonString(),
-					},
+			Events: []*types.Event{
+				{
+					Id:    "listing",
+					Value: txo.Outpoint.String(),
 				},
 			},
 			Item: listing,

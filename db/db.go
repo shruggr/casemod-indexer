@@ -2,11 +2,13 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 
 	"github.com/GorillaPool/go-junglebus"
 	"github.com/bitcoin-sv/go-sdk/transaction"
@@ -17,13 +19,13 @@ import (
 var TRIGGER = uint32(783968)
 
 var Rdb *redis.Client
+
 var Cache *redis.Client
 var JB *junglebus.Client
 
 var JUNGLEBUS string
 
 func Initialize(rdb *redis.Client, cache *redis.Client) (err error) {
-	// Db = postgres
 	Rdb = rdb
 	Cache = cache
 
@@ -37,15 +39,6 @@ func Initialize(rdb *redis.Client, cache *redis.Client) (err error) {
 			return
 		}
 	}
-
-	// if os.Getenv("BITCOIN_HOST") != "" {
-	// 	port, _ := strconv.ParseInt(os.Getenv("BITCOIN_PORT"), 10, 32)
-	// 	bit, err = bitcoin.New(os.Getenv("BITCOIN_HOST"), int(port), os.Getenv("BITCOIN_USER"), os.Getenv("BITCOIN_PASS"), false)
-	// 	if err != nil {
-	// 		log.Panic(err)
-	// 	}
-	// }
-
 	return
 }
 
@@ -64,7 +57,7 @@ func LoadTx(ctx context.Context, txid string) (*transaction.Transaction, error) 
 }
 
 func LoadRawtx(ctx context.Context, txid string) (rawtx []byte, err error) {
-	rawtx, _ = Cache.HGet(ctx, "tx:"+txid, "raw").Bytes()
+	rawtx, _ = Cache.HGet(ctx, RawtxKey, txid).Bytes()
 
 	if len(rawtx) > 0 {
 		return rawtx, nil
@@ -75,7 +68,9 @@ func LoadRawtx(ctx context.Context, txid string) (rawtx []byte, err error) {
 		// fmt.Println("JB", url)
 		if resp, err := http.Get(url); err != nil {
 			log.Println("JB GetRawTransaction", err)
-		} else if resp.StatusCode == 200 {
+		} else if resp.StatusCode > 200 {
+			return rawtx, fmt.Errorf("JB GetRawTransaction %d %s", resp.StatusCode, txid)
+		} else {
 			rawtx, _ = io.ReadAll(resp.Body)
 		}
 	}
@@ -85,12 +80,12 @@ func LoadRawtx(ctx context.Context, txid string) (rawtx []byte, err error) {
 		return
 	}
 
-	Cache.HSet(ctx, "tx:"+txid, "raw", rawtx).Err()
+	Cache.HSet(ctx, RawtxKey, txid, rawtx).Err()
 	return
 }
 
 func LoadProof(ctx context.Context, txid string) (*transaction.MerklePath, error) {
-	proof, _ := Cache.HGet(ctx, "tx:"+txid, "proof").Bytes()
+	proof, _ := Cache.HGet(ctx, ProofKey, txid).Bytes()
 	if len(proof) > 0 {
 		return transaction.NewMerklePathFromBinary(proof)
 	} else if JUNGLEBUS != "" {
@@ -100,7 +95,7 @@ func LoadProof(ctx context.Context, txid string) (*transaction.MerklePath, error
 			log.Println("JB GetProof", err)
 		} else if resp.StatusCode == 200 {
 			proof, _ = io.ReadAll(resp.Body)
-			if err = Cache.HSet(ctx, "tx:"+txid, "proof", proof).Err(); err != nil {
+			if err = Cache.HSet(ctx, ProofKey, txid, proof).Err(); err != nil {
 				return nil, err
 			}
 			return transaction.NewMerklePathFromBinary(proof)
@@ -117,6 +112,34 @@ type TxoSearch struct {
 	Owner   *string `json:"owner"`
 	Spent   *bool   `json:"spent"`
 	Cursor  uint64  `json:"cursor"`
+}
+
+func SyncBlocks(ctx context.Context, fromHeight uint32, pageSize uint) (uint32, error) {
+	log.Println("Syncing from", fromHeight)
+	height := fromHeight
+	blocks, err := JB.GetBlockHeaders(ctx, strconv.FormatUint(uint64(fromHeight), 10), pageSize)
+	if err != nil {
+		log.Panicln(err)
+	}
+	if _, err := Rdb.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		for _, block := range blocks {
+			if blockData, err := json.Marshal(block); err != nil {
+				return err
+			} else if err := pipe.HSet(ctx, BlockKey, BlockHeightKey(block.Height), blockData).Err(); err != nil {
+				return err
+			} else if err := pipe.ZAdd(ctx, BlockIdKey, redis.Z{
+				Score:  float64(block.Height),
+				Member: block.Hash,
+			}).Err(); err != nil {
+				return err
+			}
+			height = block.Height + 1
+		}
+		return nil
+	}); err != nil {
+		return fromHeight, err
+	}
+	return height, nil
 }
 
 // func (search *TxoSearch) Search(ctx context.Context) ([]*Outpoint, error) {

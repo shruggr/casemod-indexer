@@ -1,1 +1,0 @@
-go run . -id=bsv21 -t=22826aa9edbd03832bd1024866dab85d6abeade94eb011e5a3c3a59f5abdbe26 -s=811302 -v=0
