@@ -16,13 +16,14 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/redis/go-redis/v9"
 	"github.com/shruggr/casemod-indexer/db"
+	"github.com/shruggr/casemod-indexer/listener"
 	"github.com/shruggr/casemod-indexer/mod/bsv21"
 	"github.com/shruggr/casemod-indexer/mod/ord"
-	store "github.com/shruggr/casemod-indexer/txostore"
+	"github.com/shruggr/casemod-indexer/txostore"
 	"github.com/shruggr/casemod-indexer/types"
 )
 
-const CONCURRENCY = 1
+const CONCURRENCY = 8
 
 var PAGE_SIZE = int64(250)
 
@@ -60,12 +61,12 @@ func init() {
 		cache = redis.NewClient(opt)
 	}
 
-	db.Initialize(rdb, cache)
+	db.Initialize(rdb, cache, 8)
 }
 
 var prevProgress string
 var prevScore atomic.Value
-var txoStore = &store.Store{
+var store = &txostore.Store{
 	Indexers: []types.Indexer{
 		&bsv21.Bsv21Indexer{
 			InscrptionIndexer: &ord.InscriptionIndexer{},
@@ -80,17 +81,18 @@ func main() {
 	}
 	if progress == "" {
 		progress = "-"
+		prevScore.Store(0.0)
 	} else {
 		prevScore.Store(logIdToScore(progress) - 1)
 	}
 
-	// go listener.Start(context.Background(),
-	// 	INDEXER,
-	// 	TOPIC,
-	// 	FROM_HEIGHT,
-	// 	VERBOSE,
-	// )
-	// go processLogs(progress)
+	go listener.Start(context.Background(),
+		INDEXER,
+		TOPIC,
+		FROM_HEIGHT,
+		VERBOSE,
+	)
+	go processLogs(progress)
 
 	go processQueue()
 	<-make(chan struct{})
@@ -116,22 +118,21 @@ func processLogs(progress string) {
 						log.Println("Parsing", txid)
 					}
 					var tx *transaction.Transaction
-					if rawtx, err := db.LoadRawtx(ctx, txid); err != nil {
-						panic(err)
-					} else if tx, err = transaction.NewTransactionFromBytes(rawtx); err != nil {
+					if tx, err = db.LoadTx(ctx, txid); err != nil {
 						log.Panicln(txid, err)
 					}
-					idxCtx := store.NewIndexContext(ctx, tx)
-					if err = txoStore.ParseOutputs(ctx, idxCtx); err != nil {
+					log.Println("Received", tx.TxID())
+					idxCtx := txostore.NewIndexContext(ctx, tx)
+					if err = store.ParseOutputs(ctx, idxCtx); err != nil {
 						log.Panicln(txid, err)
 					} else {
 						ids := make(map[string]struct{})
 						for _, txo := range idxCtx.Txos {
 							if item, ok := txo.Data["bsv21"]; !ok {
 								continue
-							} else if bsv21, ok := item.Item.(*bsv21.Bsv21); ok {
+							} else if bsv21, ok := item.Obj.(*bsv21.Bsv21); ok {
 								queueKey := db.QueueKey(INDEXER) + bsv21.Id.String()
-								if err = db.Rdb.ZAdd(ctx, queueKey, redis.Z{
+								if err = db.Txos.ZAdd(ctx, queueKey, redis.Z{
 									Score:  score,
 									Member: txid,
 								}).Err(); err != nil {
@@ -168,7 +169,7 @@ func processQueue() {
 	var wg sync.WaitGroup
 	for {
 		queueKey := db.QueueKey(INDEXER)
-		iter := db.Rdb.Scan(ctx, 0, queueKey+"*", 1000).Iterator()
+		iter := db.Txos.Scan(ctx, 0, queueKey+"*", 1000).Iterator()
 		count := 0
 		for iter.Next(ctx) {
 			count++
@@ -197,7 +198,7 @@ func processQueue() {
 
 func processToken(tokenId string) {
 	queueKey := db.QueueKey(INDEXER) + tokenId
-	if txids, err := db.Rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+	if txids, err := db.Txos.ZRangeArgs(ctx, redis.ZRangeArgs{
 		Key:     queueKey,
 		Start:   0,
 		Stop:    prevScore.Load().(float64),
@@ -206,14 +207,14 @@ func processToken(tokenId string) {
 	}).Result(); err != nil {
 		panic(err)
 	} else {
-		pipe := db.Rdb.Pipeline()
+		pipe := db.Txos.Pipeline()
 		for _, txid := range txids {
 			if VERBOSE > 0 {
 				log.Println("Processing", tokenId, txid)
 			}
-			if tx, err := db.LoadTx(ctx, txid); err != nil {
+			if tx, err := db.LoadTxAndProof(ctx, txid); err != nil {
 				panic(err)
-			} else if txoStore.Ingest(ctx, tx); err != nil {
+			} else if _, err := store.Ingest(ctx, tx); err != nil {
 				panic(err)
 			} else if err := pipe.ZRem(ctx, queueKey, txid).Err(); err != nil {
 				panic(err)

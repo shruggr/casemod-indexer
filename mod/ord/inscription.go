@@ -10,6 +10,7 @@ import (
 	"github.com/bitcoin-sv/go-sdk/script"
 	"github.com/shruggr/casemod-indexer/lib"
 	"github.com/shruggr/casemod-indexer/types"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 var AsciiRegexp = regexp.MustCompile(`^[[:ascii:]]*$`)
@@ -56,14 +57,14 @@ func ParseInscription(idxCtx *types.IndexContext, vout uint32) *types.IndexData 
 	s := idxCtx.Tx.Outputs[vout].LockingScript
 
 	var fromPos *int
-	for i := 0; i < len(txo.Script); {
+	for i := 0; i < len(txo.Output.Script); {
 		startI := i
 		if op, err := s.ReadOp(&i); err != nil {
 			break
 		} else if op.Op == script.OpDATA3 && i > 2 &&
 			bytes.Equal(op.Data, []byte("ord")) &&
-			txo.Script[startI-2] == 0 &&
-			txo.Script[startI-1] == script.OpIF {
+			txo.Output.Script[startI-2] == 0 &&
+			txo.Output.Script[startI-1] == script.OpIF {
 			fromPos = &i
 			break
 		}
@@ -76,7 +77,7 @@ func ParseInscription(idxCtx *types.IndexContext, vout uint32) *types.IndexData 
 	ins := &Inscription{
 		File: &File{},
 	}
-	idxData := &types.IndexData{Item: ins}
+	idxData := &types.IndexData{Obj: ins}
 
 ordLoop:
 	for {
@@ -146,22 +147,22 @@ ordLoop:
 }
 
 func (i *InscriptionIndexer) IndexInscription(idxCtx *types.IndexContext, idxData *types.IndexData) {
-	ins := idxData.Item.(*Inscription)
-	idxData.Events = append(idxData.Events, &types.Event{
-		Id:    "type",
+	ins := idxData.Obj.(*Inscription)
+	idxData.Events = append(idxData.Events, &types.EventLog{
+		Label: "type",
 		Value: ins.File.Type,
 	})
 	if ins.Parent != nil {
 		if slices.ContainsFunc(idxCtx.Spends, func(spend *types.Txo) bool {
 			if o, ok := spend.Data["origin"]; ok {
-				if origin, ok := o.Item.(*Origin); ok {
+				if origin, ok := o.Obj.(*Origin); ok {
 					return bytes.Equal(origin.Outpoint.Bytes(), ins.Parent.Bytes())
 				}
 			}
 			return false
 		}) {
-			idxData.Events = append(idxData.Events, &types.Event{
-				Id:    "parent",
+			idxData.Events = append(idxData.Events, &types.EventLog{
+				Label: "parent",
 				Value: ins.Parent.String(),
 			})
 		} else {
@@ -199,11 +200,11 @@ func (i *InscriptionIndexer) IndexInscription(idxCtx *types.IndexContext, idxDat
 	// }
 }
 
-// func (i *InscriptionIndexer) UnmarshalData(raw []byte) (any, error) {
-// 	ins := &Inscription{}
-// 	if err := proto.Unmarshal(raw, ins); err != nil {
-// 		return nil, err
-// 	} else {
-// 		return ins, nil
-// 	}
-// }
+func (i *InscriptionIndexer) UnmarshalData(raw []byte) (any, error) {
+	ins := &Inscription{}
+	if err := msgpack.Unmarshal(raw, ins); err != nil {
+		return nil, err
+	} else {
+		return ins, nil
+	}
+}

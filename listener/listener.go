@@ -43,7 +43,7 @@ func Start(
 	}()
 
 	if indexer != "" {
-		if logs, err := db.Rdb.XRevRangeN(ctx, db.LogKey(indexer), "+", "-", 1).Result(); err != nil {
+		if logs, err := db.Txos.XRevRangeN(ctx, db.LogKey(indexer), "+", "-", 1).Result(); err != nil {
 			log.Panic(err)
 		} else if len(logs) > 0 {
 			parts := strings.Split(logs[0].ID, "-")
@@ -111,9 +111,9 @@ func Start(
 			}
 			if txn.BlockHeight < lastBlock || (txn.BlockHeight == lastBlock && txn.BlockIndex <= lastIdx) {
 				return
-			} else if err := db.Cache.HSet(ctx, db.RawtxKey, txn.Id, txn.Transaction).Err(); err != nil {
-				log.Panicln(err)
-			} else if err := db.Rdb.XAdd(ctx, &redis.XAddArgs{
+			}
+			// db.SaveRawtx(ctx, txn.Transaction)
+			if err := db.Txos.XAdd(ctx, &redis.XAddArgs{
 				Stream: logKey,
 				Values: map[string]interface{}{
 					"txn": txn.Id,
@@ -130,7 +130,7 @@ func Start(
 			if verbose > 0 {
 				log.Printf("[MEM]: %s\n", txn.Id)
 			}
-			if err := db.Rdb.ZAdd(ctx, queueKey, redis.Z{
+			if err := db.Txos.ZAdd(ctx, queueKey, redis.Z{
 				Member: txn.Id,
 				Score:  float64(time.Now().Unix()),
 			}).Err(); err != nil {
@@ -143,11 +143,16 @@ func Start(
 	}
 
 	log.Println("Subscribing to Junglebus from block", progress)
-	if sub, err = db.JB.Subscribe(
+	if sub, err = db.JB.SubscribeWithQueue(
 		context.Background(),
 		topic,
 		uint64(progress),
+		0,
 		eventHandler,
+		&junglebus.SubscribeOptions{
+			QueueSize: 1000,
+			LiteMode:  true,
+		},
 	); err != nil {
 		panic(err)
 	}

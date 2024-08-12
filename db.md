@@ -15,7 +15,6 @@ owner:bsv21:id:<id>
 ZSET - outpoint, dx
 
 
-
 evt:<tag>:<id>:<value>
 outpoint -> score
 
@@ -24,3 +23,10 @@ outpoint -> score
 
 own:<owner>
 outpoint -> score
+
+
+tx:txid
+    a
+    i%08x
+    o%08x
+    t

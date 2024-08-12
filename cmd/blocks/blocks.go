@@ -54,7 +54,7 @@ func main() {
 
 func syncBlocks() (err error) {
 	fromHeight := uint32(1)
-	if blockIds, err := db.Rdb.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{
+	if blockIds, err := db.Txos.ZRangeArgsWithScores(ctx, redis.ZRangeArgs{
 		Key:     db.BlockIdKey,
 		ByScore: true,
 		Rev:     true,

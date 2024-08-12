@@ -50,7 +50,7 @@ func (b *Bsv21Indexer) Parse(idxCtx *types.IndexContext, vout uint32) *types.Ind
 	if i == nil {
 		return nil
 	}
-	insc := i.Item.(*ord.Inscription)
+	insc := i.Obj.(*ord.Inscription)
 	if insc == nil {
 		return nil
 	}
@@ -107,17 +107,17 @@ func (b *Bsv21Indexer) Parse(idxCtx *types.IndexContext, vout uint32) *types.Ind
 	}
 
 	idxData := &types.IndexData{
-		Item: bsv21,
-		Events: []*types.Event{
+		Obj: bsv21,
+		Events: []*types.EventLog{
 			{
-				Id:    "id",
+				Label: "id",
 				Value: bsv21.Id.String(),
 			},
 		},
 	}
 	if bsv21.Contract != "" {
-		idxData.Events = append(idxData.Events, &types.Event{
-			Id:    "contract",
+		idxData.Events = append(idxData.Events, &types.EventLog{
+			Label: "contract",
 			Value: bsv21.Contract,
 		})
 	}
@@ -133,7 +133,7 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 		if b, ok := spend.Data["bsv21"]; !ok {
 			continue
 		} else {
-			bsv21 = b.Item.(*Bsv21)
+			bsv21 = b.Obj.(*Bsv21)
 		}
 		if bsv21.Status == int32(Valid) {
 			tokenId := bsv21.Id.String()
@@ -156,7 +156,7 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 		var ok bool
 		if bData, ok = txo.Data["bsv21"]; !ok {
 			continue
-		} else if bsv21, ok = bData.Item.(*Bsv21); !ok {
+		} else if bsv21, ok = bData.Obj.(*Bsv21); !ok {
 			continue
 		}
 		tokenId := bsv21.Id.String()
@@ -168,13 +168,13 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 
 		var token *Bsv21
 		if tokenSpends, ok := spends[tokenId]; ok {
-			// txids := map[string]struct{}{}
+			txids := map[string]struct{}{}
 			for i, spend := range tokenSpends {
-				bData.Deps = append(bData.Deps, spend.Outpoint)
-				// txid := spend.Outpoint.Txid.String()
-				// if _, ok := txids[txid]; !ok {
-				// 	txids[txid] = struct{}{}
-				// }
+				txid := spend.Outpoint.Txid.String()
+				if _, ok := txids[txid]; !ok {
+					txids[txid] = struct{}{}
+					bData.Deps = append(bData.Deps, spend.Outpoint)
+				}
 				token = tokensIn[tokenId][i]
 			}
 		}
@@ -187,29 +187,23 @@ func (b *Bsv21Indexer) Save(idxCtx *types.IndexContext) {
 			tokenTxos[tokenId] = []*types.Txo{}
 		}
 		tokenTxos[tokenId] = append(tokenTxos[tokenId], txo)
-		balance[tokenId] -= txo.Satoshis
+		balance[tokenId] -= txo.Output.Satoshis
 	}
 
 	for id, txos := range tokenTxos {
 		reason := reasons[id]
 		for _, txo := range txos {
 			idxData := txo.Data["bsv21"]
-			bsv21 := idxData.Item.(*Bsv21)
+			bsv21 := idxData.Obj.(*Bsv21)
 			if reason != "" {
-				bsv21.Status = int32(Invalid)
-				bsv21.Reason = reason
-				idxData.Events = append(idxData.Events, &types.Event{
-					Id:    "reason",
-					Value: reason,
-				})
+				if idxCtx.Block != nil {
+					bsv21.Status = int32(Invalid)
+					bsv21.Reason = reason
+				}
 			} else {
-				idxData.Events = append(idxData.Events, &types.Event{
-					Id:    "id",
-					Value: bsv21.Id.String(),
-				})
 				if bsv21.Contract != "" {
-					idxData.Events = append(idxData.Events, &types.Event{
-						Id:    "contract",
+					idxData.Events = append(idxData.Events, &types.EventLog{
+						Label: "contract",
 						Value: bsv21.Contract,
 					})
 				}
@@ -226,9 +220,4 @@ func (b *Bsv21Indexer) UnmarshalData(raw []byte) (any, error) {
 	} else {
 		return bsv21, nil
 	}
-}
-
-func (b *Bsv21Indexer) MarshalData(data any) ([]byte, error) {
-	bsv21 := data.(*Bsv21)
-	return msgpack.Marshal(bsv21)
 }

@@ -45,7 +45,7 @@ func Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
 			PayOut: payOutput.Bytes(),
 		}
 		if data, ok := txo.Data["bsv21"]; ok {
-			bsv21 := data.Item.(*bsv21.Bsv21)
+			bsv21 := data.Obj.(*bsv21.Bsv21)
 			listing.PricePer = float64(listing.Price) / (float64(bsv21.Amt) / math.Pow10(int(bsv21.Dec)))
 		}
 		if _, err = payOutput.ReadFrom(bytes.NewReader(ordLockParts[1].Data)); err != nil {
@@ -53,13 +53,13 @@ func Parse(idxCtx *types.IndexContext, vout uint32) *types.IndexData {
 		}
 		txo.Owner = &pkhash
 		return &types.IndexData{
-			Events: []*types.Event{
+			Events: []*types.EventLog{
 				{
-					Id:    "listing",
+					Label: "listing",
 					Value: txo.Outpoint.String(),
 				},
 			},
-			Item: listing,
+			Obj: listing,
 		}
 	}
 }

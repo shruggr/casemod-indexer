@@ -1,41 +1,47 @@
 package types
 
 import (
+	"encoding/json"
+
 	"github.com/bitcoin-sv/go-sdk/transaction"
 )
 
 type IndexContext struct {
-	Txid   []byte `json:"txid"`
-	Rawtx  []byte `json:"rawtx"`
+	Txid   []byte
+	Rawtx  []byte
 	Tx     *transaction.Transaction
-	Block  *Block `json:"block"`
-	Spends []*Txo `json:"spends"`
-	Txos   []*Txo `json:"txos"`
+	Block  *Block
+	Spends []*Txo
+	Txos   []*Txo
 }
 
-type Event struct {
-	Id    string `json:"id"`
-	Value string `json:"value"`
+type EventLog struct {
+	Label string
+	Value string
 }
 
 type IndexData struct {
-	Tag    string      `json:"tag"`
-	Data   []byte      `json:"data"`
-	Events []*Event    `json:"events"`
-	Deps   []*Outpoint `json:"deps"`
-	Item   interface{} `json:"item" msgpack:"-"`
+	Tag    string
+	Data   []byte
+	Events []*EventLog
+	Deps   []*Outpoint
+	Obj    interface{}
+}
+
+func (id *IndexData) MarshalJSON() (bytes []byte, err error) {
+	return json.Marshal(id.Obj)
 }
 
 type Indexer interface {
 	Tag() string
 	Parse(*IndexContext, uint32) *IndexData
 	Save(*IndexContext)
-	Score(*IndexContext, uint32) float64
+	Score(txo *Txo) float64
+	UnmarshalData([]byte) (any, error)
 }
 
 type BaseIndexer struct{}
 
-func (b *BaseIndexer) Score(idxCtx *IndexContext, vout uint32) float64 {
-	txo := idxCtx.Txos[vout]
+func (b *BaseIndexer) Score(txo *Txo) float64 {
 	return txo.Score()
 }

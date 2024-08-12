@@ -43,8 +43,8 @@ func NewPKHashFromScript(s []byte) (*PKHash, error) {
 		parts[0].Op == script.OpDUP &&
 		parts[1].Op == script.OpHASH160 &&
 		len(parts[2].Data) == 20 &&
-		parts[23].Op == script.OpEQUALVERIFY &&
-		parts[24].Op == script.OpCHECKSIG {
+		parts[3].Op == script.OpEQUALVERIFY &&
+		parts[4].Op == script.OpCHECKSIG {
 
 		pkh := PKHash(parts[2].Data)
 		return &pkh, nil
