@@ -15,7 +15,7 @@ import (
 
 var rdb *redis.Client
 
-// var cache *redis.Client
+var cache *redis.Client
 
 var VERBOSE int = 0
 var PAGE_SIZE = uint(10000)
@@ -37,13 +37,13 @@ func init() {
 		rdb = redis.NewClient(opt)
 	}
 
-	// if opt, err := redis.ParseURL(os.Getenv("REDISCACHE")); err != nil {
-	// 	panic(err)
-	// } else {
-	// 	cache = redis.NewClient(opt)
-	// }
+	if opt, err := redis.ParseURL(os.Getenv("REDISCACHE")); err != nil {
+		panic(err)
+	} else {
+		cache = redis.NewClient(opt)
+	}
 
-	db.Initialize(rdb)
+	db.Initialize(rdb, cache, 10)
 }
 
 func main() {

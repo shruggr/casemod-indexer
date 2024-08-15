@@ -121,7 +121,6 @@ func processLogs(progress string) {
 					if tx, err = db.LoadTx(ctx, txid); err != nil {
 						log.Panicln(txid, err)
 					}
-					log.Println("Received", tx.TxID())
 					idxCtx := txostore.NewIndexContext(ctx, tx)
 					if err = store.ParseOutputs(ctx, idxCtx); err != nil {
 						log.Panicln(txid, err)
@@ -191,7 +190,7 @@ func processQueue() {
 		}
 		wg.Wait()
 		if count == 0 {
-			time.Sleep(5 * time.Second)
+			time.Sleep(60 * time.Second)
 		}
 	}
 }

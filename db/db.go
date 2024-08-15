@@ -98,7 +98,6 @@ func LoadTxRemote(ctx context.Context, txid string) (*transaction.Transaction, e
 	} else if tx, err := transaction.NewTransactionFromBytes(rawtx); err != nil {
 		return nil, err
 	} else {
-		log.Println("Requested:", txid, "Received", tx.TxID())
 		SaveTx(ctx, tx)
 		return tx, nil
 	}
@@ -166,35 +165,3 @@ func SyncBlocks(ctx context.Context, fromHeight uint32, pageSize uint) (uint32, 
 	}
 	return height, nil
 }
-
-// func (search *TxoSearch) Search(ctx context.Context) ([]*Outpoint, error) {
-// 	var key string = "events"
-// 	var pattern string
-// 	if search.Owner != nil {
-// 		key = "oevents"
-// 		pattern = *search.Owner + ":"
-// 	}
-// 	if search.Indexer != nil {
-// 		pattern = pattern + *search.Indexer + ":"
-// 		if search.Tag != nil {
-// 			pattern = pattern + *search.Tag
-// 			if search.Id != nil {
-// 				pattern = pattern + ":" + *search.Id
-// 				if search.Value != nil {
-// 					pattern = pattern + ":" + *search.Value
-// 				}
-// 			}
-// 		}
-// 	}
-// 	start := float64(0)
-// 	end := float64(2)
-// 	if search.Spent != nil && *search.Spent {
-// 		start = 1
-// 	} else if search.Spent != nil && !*search.Spent {
-// 		end = 1
-// 	}
-// 	Rdb.ZRangeByScore(ctx, key, &redis.ZRangeBy{})
-// 	// if keys, _, err := Rdb.ZScan(ctx, key, start, pattern+":*", 100).Result(); err != nil {
-
-// 	// }
-// }
